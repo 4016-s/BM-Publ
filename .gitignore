@@ -1,0 +1,16 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+Data/
+*.csv
+*.rds
+*.Rds
+Fig_output/
+Data_output/
+Documents/
+Raw Files/
+.DS_Store
+Thumbs.db
