@@ -1,0 +1,41 @@
+---
+title: "BMvisualizing"
+format: html
+execute: 
+  message: false
+  warning: false
+format: 
+  html:
+    code-fold: true
+---
+###Loading objects
+```{r}
+
+```
+
+###Visualizing Data
+```{r}
+
+```
+
+###Finding Clusters
+```{r}
+
+```
+
+###Identify cluster markers
+```{r}
+
+```
+
+###Checking Mesenchymal and Adrenergic markers
+```{r}
+
+```
+
+###Checking BM markers in PT
+```{r}
+
+```
+
+
