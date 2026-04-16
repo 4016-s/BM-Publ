@@ -8,19 +8,223 @@ format:
   html:
     code-fold: true
 ---
-###Loading objects
-```{r}
+###Loading libraries
+```{r Loading Libraries}
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library(ggplot2)
+library(hdf5r)
+library(SeuratData)
+library(ggrepel)
+library(tidyverse)
+```
 
+###Loading objects
+```{r Loading Objects}
+#Setting working directory
+setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
+
+#Loading objects
+UnintegratedMerged <-readRDS("Från Gustav/Doublet-Removed Merged BM Object.rds")
+IntegratedObject <- readRDS("Från Gustav/Integrated Seurat Object.rds")
+MetaData <- readRDS("Från Gustav/Seurat Object Metadata.rds")
+
+#Loading DE results
+MastResult <- readRDS("Från Gustav/MAST Random Intercept Result.rds")
+EdgeRResult <- readRDS("Från Gustav/Edge R Result.rds")
 ```
 
 ###Visualizing Data
-```{r}
+```{r Volcplot MAST}
 
 ```
 
-###Finding Clusters
-```{r}
+```{r Volcplot EdgeR}
 
+```
+
+```{r Comparing MAST and EdgeR log2-fold change}
+
+```
+
+```{r Comparing MAST and EdgeR p-value}
+
+```
+
+```{r Size of groups}
+#Adding grouped metadata for easier plotting
+IntegratedObject$Cell_Line_n_Tissue <- paste(IntegratedObject$Cell_Line_n, IntegratedObject$Tissue, sep = "_")
+IntegratedObject$Mouse_n_Tissue <- paste(IntegratedObject$Mouse_n, IntegratedObject$Tissue, sep = "_")
+
+#Checking group sizes
+table(IntegratedObject$Tissue)
+table(IntegratedObject$Cell_Line_n_Tissue)
+table(IntegratedObject$Mouse_n_Tissue)
+```
+
+```{r Visualizing the integration}
+wrap_plots(
+  DimPlot(IntegratedObject, reduction = "integrated.cca", group.by = "Cell_Line_n") + ggtitle("CCA Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Cell_Line_n") + ggtitle("Harmony Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Cell_Line_n") + ggtitle("non-integrated Merged Object"),
+  DimPlot(IntegratedObject, reduction = "integrated.cca", group.by = "Tissue") + ggtitle("CCA Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Tissue") + ggtitle("Harmony Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Tissue") + ggtitle("non-integrated Merged Object"),
+  ncol = 3
+)
+```
+
+```{r Visualizing Object}
+DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Tissue", split.by = "Mouse_n", ncol = 3)
+DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Tissue", split.by = "Cell_Line_n", ncol = 3)
+DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Mouse_n", split.by = "Cell_Line_n", ncol = 3)
+```
+
+###Finding Clusters
+```{r Clustering With different resolutions}
+#Clustering with res 0.9
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.9)
+ClustRes09 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.9")
+
+#0.8
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.8)
+ClustRes08 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.8")
+
+#0.7
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.7)
+ClustRes07 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.7")
+
+#0.6
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.6)
+ClustRes06 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.6")
+
+#0.5
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.5)
+ClustRes05 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.5")
+
+#0.4
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.4)
+ClustRes04 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.4")
+
+#0.3
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.3)
+ClustRes03 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.3")
+
+#0.2
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
+ClustRes02 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.2")
+
+#0.1
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.1)
+ClustRes01 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.1")
+
+#Visualizing clusters with different resolutions
+wrap_plots(
+  ClustRes09, ClustRes08, ClustRes07, ClustRes06, ClustRes05, ClustRes04, ClustRes03, ClustRes02, ClustRes01,
+  ncol = 3
+)
+```
+
+```{r Finding clusters with smaller resolutions}
+#Finding clusters with smaller resolutions
+#0.2
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
+ClustRes20 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.2")
+
+#0.18
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.18)
+ClustRes18 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.18")
+
+#0.16
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.16)
+ClustRes16 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.16")
+
+#0.14
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.14)
+ClustRes14 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.14")
+
+#0.12
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.12)
+ClustRes12 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.12")
+
+#0.10
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.10)
+ClustRes10 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.10")
+
+#0.08
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.08)
+ClustRes08 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.08")
+
+#0.06
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.06)
+ClustRes06 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.06")
+
+#0.04
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.04)
+ClustRes04 <- DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.04")
+
+#Visualizing clusters with different resolutions
+wrap_plots(
+  ClustRes20, ClustRes18, ClustRes16, ClustRes14, ClustRes12, ClustRes10, ClustRes08, ClustRes06, ClustRes04,
+  ncol = 3
+)
+
+```
+```{r Nbr of clusters at different resolutions}
+#Tar tid och redan kört, behöver ej köras om
+#resList <- list()
+##loop from 0.01 to 1.0 with 0.01 increments
+#for (res in seq(0.01, 1.0, by = 0.01)) {
+#  #Find neighbors and clusters
+#  IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = #1:30)
+#  IntegratedObject <- FindClusters(IntegratedObject, resolution = res)
+#  
+#  #Count number of clusters
+#  clustnbr <- length(unique(IntegratedObject$seurat_clusters))
+#  
+#  #Add number of clusters to list
+#  resList[[as.character(res)]] <- clustnbr
+#}
+
+saveRDS(resList, "Number of clusters at different resolutions.rds")
+resList <- readRDS("Number of clusters at different resolutions.rds")
+
+#Ggplot of changes in cluster number with different resolutions
+resDF <- data.frame(Resolution = as.numeric(names(resList)), ClusterNumber = unlist(resList))
+ggplot(resDF, aes(x = Resolution, y = ClusterNumber)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("Number of Clusters at Different Resolutions") +
+  xlab("Resolution") +
+  ylab("Number of Clusters") +
+  theme_minimal()
+```
+
+```{r Setting resolution, watching results}
+#13 cluster at res 0.15 seem to be a good choice
+IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.15)
+DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Cell_Line_n", split.by = "seurat_clusters", ncol = 4) + ggtitle("Resolution 0.15")
 ```
 
 ###Identify cluster markers
