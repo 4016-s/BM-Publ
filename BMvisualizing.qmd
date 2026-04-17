@@ -38,10 +38,37 @@ EdgeRResult <- readRDS("Från Gustav/Edge R Result.rds")
 
 ###Visualizing Data
 ```{r Volcplot MAST}
+#Data frame with gene name, log2-fold change and adjusted p-value for MAST results, with significance if in MastUp or MastDown
+MastDF <- data.frame(Gene = MastResult$primerid, Log2FC = MastResult$MeanLog, AdjPValue = MastResult$BH_adj_p_val, Significant = ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$MeanLog > 1, "Upregulated", ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$MeanLog < -1, "Downregulated", "Not Significant")))
 
+#List of genes with adjusted p-value < 0.01 and log2-fold change > 2
+MastUp <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC > 1) %>% pull(Gene)
+#List of genes with adjusted p-value < 0.01 and log2-fold change < -2
+MastDown <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC < -1) %>% pull(Gene)
+
+#Volcano plot for MAST results, lines for significance borders and label and colors for significant genes
+ggplot(MastDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed") +
+  geom_text_repel(data = MastDF %>% filter(Significant != "Not Significant"), aes(label = Gene), size = 3)
 ```
 
 ```{r Volcplot EdgeR}
+#Dataframe with gene name, log2-fold change and adjusted p-value for EdgeR results, with significance if in EdgeRUp or EdgeRDown
+EdgeRDF <- data.frame(Gene = EdgeRResult$Gene, Log2FC = EdgeRResult$avg_log2FC, AdjPValue = EdgeRResult$p_val, Significant = ifelse(EdgeRResult$p_val < 0.01 & EdgeRResult$avg_log2FC > 1, "Upregulated", ifelse(EdgeRResult$p_val < 0.01 & EdgeRResult$avg_log2FC < -1, "Downregulated", "Not Significant")))
+
+#List of upregulated genes in EdgeRobject
+EdgeRUp <- EdgeRDF %>% filter(AdjPValue < 0.01 & Log2FC > 1) %>% pull(Gene)
+#List of downregulated genes in EdgeR object
+EdgeRDown <- EdgeRDF %>% filter(AdjPValue < 0.01 & Log2FC < -1) %>% pull(Gene)
+
+#Volcano plot for EdgeR results, lines for significance borders and label and colors for significant genes
+ggplot(EdgeRDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed") +
+  geom_text_repel(data = EdgeRDF %>% filter(Significant != "Not Significant"), aes(label = Gene), size = 3)
 
 ```
 
@@ -234,7 +261,32 @@ DimPlot(IntegratedObject, reduction = "integrated.harmony", group.by = "Cell_Lin
 
 ###Checking Mesenchymal and Adrenergic markers
 ```{r}
+ADRNgenes <- c("TH", "DBH", "CHGA", "PHOX2B", "GATA3", "MYCN", "PHOX2A")
+MESgenes <- c("CD44", "FN1", "COL1A1", "RUNX2", "WWTR1", "IRF1", "SNAI2", "VIM")
 
+#Feature plots for ADRN and MES markers
+FeaturePlot(IntegratedObject, features = ADRNgenes, reduction = "integrated.harmony", ncol = 4) + ggtitle("ADRN Markers")
+FeaturePlot(IntegratedObject, features = MESgenes, reduction = "integrated.harmony", ncol = 4) + ggtitle("ADRN Markers")
+
+#VlnPlot for ADRN and MES markers per cluster
+VlnPlot(IntegratedObject, features = ADRNgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data") + ggtitle("ADRN Markers")
+VlnPlot(IntegratedObject, features = MESgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data") + ggtitle("MES Markers")
+
+#AddModuleScore fro ADRN and MES
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(ADRNgenes), name = "ADRN_Score", assay="RNA", layer="data")
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(MESgenes), name = "MES_Score", assay="RNA", layer="data")
+
+#VlnPlot for ADRN and MES score per cluster
+VlnPlot(IntegratedObject, features = c("ADRN_Score1"), group.by = "seurat_clusters", ncol = 1) + ggtitle("ADRN Score")
+VlnPlot(IntegratedObject, features = c("MES_Score1"), group.by = "seurat_clusters", ncol = 1) + ggtitle("MES Score")
+
+# Q: How do I check how many genes is kept in the SCT assay?
+# A: You can check the number of genes in the SCT assay by using the following code:
+length(rownames(IntegratedObject[["SCT"]]))
+# Q: And how many are in the normal, normalized and scaled part?
+# A: You can check the number of genes in the normal, normalized, and scaled part of the SCT assay by using the following code:
+length(rownames(IntegratedObject[["SCT"]]@data)) # Normalized data, 21790 genes
+length(rownames(IntegratedObject[["SCT"]]@scale.data)) # Scaled, 782 genes. DOES NOT CAPTURE ALL VARIABILITY! --> homogenous umap and no good clustering.
 ```
 
 ###Checking BM markers in PT
