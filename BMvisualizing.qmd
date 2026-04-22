@@ -20,6 +20,8 @@ library(SeuratData)
 library(ggrepel)
 library(tidyverse)
 library(readxl)
+library(ComplexHeatmap)
+library(colorRamp2)
 ```
 
 ###Loading objects
@@ -312,6 +314,7 @@ wrap_plots(
 )
 
 ```
+
 ```{r Nbr of clusters at different resolutions}
 #Tar tid och redan kört, behöver ej köras om
 #resList <- list()
@@ -542,7 +545,7 @@ CellLineTissueCompDF$Cluster <- factor(CellLineTissueCompDF$Cluster, levels = 1:
 CellLineTissueCompDF$PDX_Site <- factor(CellLineTissueCompDF$PDX_Site, levels = c("PDX1_PT", "PDX1_BM", "PDX2_PT", "PDX2_BM", "PDX3_PT", "PDX3_BM"))
 
 #Barplot
-ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Site, size=8)) + 
+Figure4 <- ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Site, size=8)) + 
   geom_bar(position = "fill", stat = "identity", width = 0.9) + 
   ggtitle("Percentage of Clusters per PDX and Location") +
   scale_fill_manual(values = Cluster_colours) +
@@ -566,30 +569,200 @@ ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Site, size=8)
   panel.grid = element_blank(),
   text = element_text(family = "sans", size = 12, color = "black")
 )
+Figure4
 
+#Barplot of all PT and BM composition of clusters
+Site <- rep(c("PT", "BM"), each = 13)
+Clusters <- rep(c(1:13), times = 2)
+PTcomp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Tissue == "PT"))/length(WhichCells(IntegratedObject, expression = Tissue == "PT"))
+  PTcomp <- c(PTcomp, comp)
+}
+BMcomp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Tissue == "BM"))/length(WhichCells(IntegratedObject, expression = Tissue == "BM"))
+  BMcomp <- c(BMcomp, comp)
+}
+TissueCompDF <- data.frame(Site <- Site, Cluster = Clusters, Percentage = c(PTcomp, BMcomp))
+TissueCompDF$Cluster <- factor(TissueCompDF$Cluster, levels = 1:13)
+TissueCompDF$Site <- factor(TissueCompDF$Site, levels = c("PT", "BM"))
+
+#Barplot
+Figure7 <- ggplot(TissueCompDF, aes(fill=Cluster, y=Percentage, x=Site, size=8)) + 
+  geom_bar(position = "fill", stat = "identity", width = 0.8) + 
+  ggtitle("Percentage of Clusters per Site") +
+  scale_fill_manual(values = Cluster_colours) +
+  scale_y_continuous(labels = scales::label_percent(), expand = c(0, 0)) +
+  scale_x_discrete(limits = c("PT", "BM"), labels = c("PT", "BM")) +
+  geom_text(aes(label = ifelse(Percentage > 3, round(Percentage, 2), "")), 
+            position = position_fill(vjust = 0.5), color =  "black", size = 4) +
+  theme_minimal() +
+  theme(
+  legend.position = "right",
+  legend.title = element_blank(),
+  axis.title.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.line.y = element_line(color = "black", linewidth = 1.5, lineend = "square"),
+  axis.ticks.y = element_line(color = "black", linewidth = 1.5),
+  axis.ticks.length.y = unit(0.2, "cm"),
+  axis.line.x = element_blank(),
+  axis.text.x = element_text(angle = 0, hjust = 0.5, size = 20, colour = c(Tissue_colours[1], Tissue_colours[2])),
+  axis.text.y = element_text(size = 15),
+  panel.grid = element_blank(),
+  text = element_text(family = "sans", size = 12, color = "black")
+)
+Figure7
 ```
 ```{r Finding cluster markers}
 #Finding markers on log-normalized data
-clusterMarkers <- FindAllMarkers(IntegratedObject, group.by = "seurat_clusters", only.pos = FALSE, assay = "SCT", slot = "data" , min.pct = 0.1, logfc.threshold = 0.25)
+IntegratedObject <- PrepSCTFindMarkers(IntegratedObject)
+clusterMarkers <- FindAllMarkers(IntegratedObject, min.pct = 0.1, logfc.threshold = 0.25, only.pos = TRUE)
 
 #Top 10 and top 5 per cluster
 clusterMarkers %>% 
   group_by(cluster) %>%
   dplyr::filter(p_val_adj < 0.05) %>%
-  slice_head(n = 10) %>%
+  slice_head(n = 8) %>%
   ungroup() -> top10Cluster
+top10Cluster <- unique(top10Cluster$gene)
+
 clusterMarkers %>% 
   group_by(cluster) %>%
   dplyr::filter(p_val_adj < 0.05) %>%
   slice_head(n = 5) %>%
   ungroup() -> top5Cluster
+top5Cluster <- unique(top5Cluster$gene)
+
 ```
 
 ```{r Heatmap of top 10 genes per cluster}
+IntegratedObject <- ScaleData(IntegratedObject, assay = "SCT", features = top10Cluster)
+
+#Heatmap cluster 1
+Heatmap1 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "1")
+Heatmap1Matr <- GetAssayData(Heatmap1, assay = "SCT", layer = "scale.data")
+Heatmap1Matr <- Heatmap1Matr[order(factor(rownames(Heatmap1Matr), levels = top10Cluster)), ]
+Heatmap1Annotation <- HeatmapAnnotation(Cluster = Heatmap1$seurat_clusters, PDX = Heatmap1$Cell_Line_n, Site = Heatmap1$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+col_fun = colorRamp2(c(-2, 0, 2), c("#FF00FF", "#000000", "#FFFF00"))
+
+h1 <- Heatmap(Heatmap1Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap1Annotation, col = col_fun, use_raster = FALSE, column_title = "1", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 2
+Heatmap2 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "2")
+Heatmap2Matr <- GetAssayData(Heatmap2, assay = "SCT", layer = "scale.data")
+Heatmap2Matr <- Heatmap2Matr[order(factor(rownames(Heatmap2Matr), levels = top10Cluster)), ]
+Heatmap2Annotation <- HeatmapAnnotation(Cluster = Heatmap2$seurat_clusters, PDX = Heatmap2$Cell_Line_n, Site = Heatmap2$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h2 <- Heatmap(Heatmap2Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap2Annotation, col = col_fun, use_raster = FALSE, column_title = "2", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 3
+Heatmap3 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "3")
+Heatmap3Matr <- GetAssayData(Heatmap3, assay = "SCT", layer = "scale.data")
+Heatmap3Matr <- Heatmap3Matr[order(factor(rownames(Heatmap3Matr), levels = top10Cluster)), ]
+Heatmap3Annotation <- HeatmapAnnotation(Cluster = Heatmap3$seurat_clusters, PDX = Heatmap3$Cell_Line_n, Site = Heatmap3$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h3 <- Heatmap(Heatmap3Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap3Annotation, col = col_fun, use_raster = FALSE, column_title = "3", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 4
+Heatmap4 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "4")
+Heatmap4Matr <- GetAssayData(Heatmap4, assay = "SCT", layer = "scale.data")
+Heatmap4Matr <- Heatmap4Matr[order(factor(rownames(Heatmap4Matr), levels = top10Cluster)), ]
+Heatmap4Annotation <- HeatmapAnnotation(Cluster = Heatmap4$seurat_clusters, PDX = Heatmap4$Cell_Line_n, Site = Heatmap4$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h4 <- Heatmap(Heatmap4Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap4Annotation, col = col_fun, use_raster = FALSE, column_title = "4", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 5
+Heatmap5 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "5")
+Heatmap5Matr <- GetAssayData(Heatmap5, assay = "SCT", layer = "scale.data")
+Heatmap5Matr <- Heatmap5Matr[order(factor(rownames(Heatmap5Matr), levels = top10Cluster)), ]
+Heatmap5Annotation <- HeatmapAnnotation(Cluster = Heatmap5$seurat_clusters, PDX = Heatmap5$Cell_Line_n, Site = Heatmap5$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h5 <- Heatmap(Heatmap5Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap5Annotation, col = col_fun, use_raster = FALSE, column_title = "5", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 6
+Heatmap6 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "6")
+Heatmap6Matr <- GetAssayData(Heatmap6, assay = "SCT", layer = "scale.data")
+Heatmap6Matr <- Heatmap6Matr[order(factor(rownames(Heatmap6Matr), levels = top10Cluster)), ]
+Heatmap6Annotation <- HeatmapAnnotation(Cluster = Heatmap6$seurat_clusters, PDX = Heatmap6$Cell_Line_n, Site = Heatmap6$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h6 <- Heatmap(Heatmap6Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap6Annotation, col = col_fun, use_raster = FALSE, column_title = "6", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 7
+Heatmap7 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "7")
+Heatmap7Matr <- GetAssayData(Heatmap7, assay = "SCT", layer = "scale.data")
+Heatmap7Matr <- Heatmap7Matr[order(factor(rownames(Heatmap7Matr), levels = top10Cluster)), ]
+Heatmap7Annotation <- HeatmapAnnotation(Cluster = Heatmap7$seurat_clusters, PDX = Heatmap7$Cell_Line_n, Site = Heatmap7$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h7 <- Heatmap(Heatmap7Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap7Annotation, col = col_fun, use_raster = FALSE, column_title = "7", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 8
+Heatmap8 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "8")
+Heatmap8Matr <- GetAssayData(Heatmap8, assay = "SCT", layer = "scale.data")
+Heatmap8Matr <- Heatmap8Matr[order(factor(rownames(Heatmap8Matr), levels = top10Cluster)), ]
+Heatmap8Annotation <- HeatmapAnnotation(Cluster = Heatmap8$seurat_clusters, PDX = Heatmap8$Cell_Line_n, Site = Heatmap8$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h8 <- Heatmap(Heatmap8Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap8Annotation, col = col_fun, use_raster = FALSE, column_title = "8", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+#Heatmap Cluster 9
+Heatmap9 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "9")
+Heatmap9Matr <- GetAssayData(Heatmap9, assay = "SCT", layer = "scale.data")
+Heatmap9Matr <- Heatmap9Matr[order(factor(rownames(Heatmap9Matr), levels = top10Cluster)), ]
+Heatmap9Annotation <- HeatmapAnnotation(Cluster = Heatmap9$seurat_clusters, PDX = Heatmap9$Cell_Line_n, Site = Heatmap9$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h9 <- Heatmap(Heatmap9Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap9Annotation, col = col_fun, use_raster = FALSE, column_title = "9", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6), width = unit(3, "mm"))
+
+#Heatmap Cluster 10
+Heatmap10 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "10")
+Heatmap10Matr <- GetAssayData(Heatmap10, assay = "SCT", layer = "scale.data")
+Heatmap10Matr <- Heatmap10Matr[order(factor(rownames(Heatmap10Matr), levels = top10Cluster)), ]
+Heatmap10Annotation <- HeatmapAnnotation(Cluster = Heatmap10$seurat_clusters, PDX = Heatmap10$Cell_Line_n, Site = Heatmap10$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h10 <- Heatmap(Heatmap10Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap10Annotation, col = col_fun, use_raster = FALSE, column_title = "10", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6), width = unit(3, "mm"))
+
+#Heatmap Cluster 11
+Heatmap11 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "11")
+Heatmap11Matr <- GetAssayData(Heatmap11, assay = "SCT", layer = "scale.data")
+Heatmap11Matr <- Heatmap11Matr[order(factor(rownames(Heatmap11Matr), levels = top10Cluster)), ]
+Heatmap11Annotation <- HeatmapAnnotation(Cluster = Heatmap11$seurat_clusters, PDX = Heatmap11$Cell_Line_n, Site = Heatmap11$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h11 <- Heatmap(Heatmap11Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap11Annotation, col = col_fun, use_raster = FALSE, column_title = "11", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6), width = unit(2, "mm"))
+
+#Heatmap Cluster 12
+Heatmap12 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "12")
+Heatmap12Matr <- GetAssayData(Heatmap12, assay = "SCT", layer = "scale.data")
+Heatmap12Matr <- Heatmap12Matr[order(factor(rownames(Heatmap12Matr), levels = top10Cluster)), ]
+Heatmap12Annotation <- HeatmapAnnotation(Cluster = Heatmap12$seurat_clusters, PDX = Heatmap12$Cell_Line_n, Site = Heatmap12$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c(" ", " ", " "), show_legend = FALSE)
+
+h12 <- Heatmap(Heatmap12Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap12Annotation, col = col_fun, use_raster = FALSE, column_title = "12", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6), width = unit(2, "mm"))
+
+#Heatmap Cluster 13
+Heatmap13 <- subset(IntegratedObject, features = top10Cluster, seurat_clusters == "13")
+Heatmap13Matr <- GetAssayData(Heatmap13, assay = "SCT", layer = "scale.data")
+Heatmap13Matr <- Heatmap13Matr[order(factor(rownames(Heatmap13Matr), levels = top10Cluster)), ]
+Heatmap13Annotation <- HeatmapAnnotation(Cluster = Heatmap13$seurat_clusters, PDX = Heatmap13$Cell_Line_n, Site = Heatmap13$Tissue, col = list(Cluster = Cluster_colours, PDX = PDX_colours, Site = Tissue_colours), annotation_label = c("Cluster", "PDX", "Site"), show_legend = FALSE)
+
+h13 <- Heatmap(Heatmap13Matr, name = "clusterHeatmap", cluster_rows = FALSE, cluster_columns = FALSE, show_column_dend = FALSE, show_column_names = FALSE, show_row_dend = FALSE , top_annotation = Heatmap13Annotation, col = col_fun, use_raster = FALSE, column_title = "13", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6), width = unit(2, "mm"))
+
+#Preparing Legends
+matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
+clusterLGND <- Legend(at = 1:13, title = "Clusters", legend_gp = gpar(fill = Cluster_colours))
+cellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
+typeLGND <- Legend(labels = c("PT", "BM"), title = "Site", legend_gp = gpar(fill = Tissue_colours))
+LGNDs <- packLegend(matrixLGND, clusterLGND, cellLineLGND, typeLGND)
+
+#Printing it together
+fullHTMap <- h1 + h2 + h3 + h4 + h5 + h6 + h7 + h8 + h9 + h10 + h11 + h12 + h13
+Figure5 <- draw(fullHTMap, ht_gap = unit(1, "mm"), annotation_legend_list = LGNDs)
 
 ```
 
-```{r Dotplot of top 10 genes per cluster}
+```{r Dotplot of top 5 genes per cluster}
+IntegratedObject$seurat_clusters <- factor(IntegratedObject$seurat_clusters, levels = 13:1)
+
+Figure6 <- DotPlot(IntegratedObject, features = top5Cluster, group.by = "seurat_clusters") + RotatedAxis()
+Figure6
 
 ```
 
@@ -705,7 +878,7 @@ saveRDS(IntObj2k, "IntObj with var.genes.n set to 2k.rds")
 ```
 
 
-###Checking BM markers in PT
+###Checking BM markers
 ```{r}
 
 ```
