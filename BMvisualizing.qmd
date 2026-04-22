@@ -879,8 +879,50 @@ saveRDS(IntObj2k, "IntObj with var.genes.n set to 2k.rds")
 
 
 ###Checking BM markers
-```{r}
-
+```{r Removing stuff :)}
+rm(cellLineLGND, CellLineTissueCompDF, clusterDF, clusterDF2, clusterDF3, clusterLGND, dataset_information, fullHTMap, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, Heatmap1, Heatmap2, Heatmap3, Heatmap4, Heatmap5, Heatmap6, Heatmap7, Heatmap8, Heatmap9, Heatmap10, Heatmap11, Heatmap12, Heatmap13, Heatmap1Matr, Heatmap2Matr, Heatmap3Matr, Heatmap4Matr, Heatmap5Matr, Heatmap6Matr, Heatmap7Matr, Heatmap8Matr, Heatmap9Matr, Heatmap10Matr, Heatmap11Matr, Heatmap12Matr, Heatmap13Matr, Heatmap1Annotation, Heatmap2Annotation, Heatmap3Annotation, Heatmap4Annotation, Heatmap5Annotation, Heatmap6Annotation, Heatmap7Annotation, Heatmap8Annotation, Heatmap9Annotation, Heatmap10Annotation, Heatmap11Annotation, Heatmap12Annotation, Heatmap13Annotation, included_dataset_information, LGNDs, matrixLGND, metadata_to_add, subplots, TissueCompDF, typeLGND, BM1comp, BM1plot, BM2comp, BM2plot, BM3comp, BM3plot, BMcomp, BMVec, cluster, Clusters, clusterVec, clusterVec2, clusterVec3, colour_use_count, comp, i, mouse_ID_sorted, new.cluster.ids, PDX_Site, PDX1Vec, PDX2Vec, PDX3Vec, PDXandSite, PDXvec, PDXvec2, PT1comp, PT1plot, PT2comp, PT2plot, PT3comp, PT3plot, PTcomp, PTVec, sample_indices, Site, TissueVec, title_colors, col_fun, pie_colours)
+gc()
 ```
+
+
+```{r Significant gene list up and down from Mast}
+chosenGenes <- read_excel("~/Forskning/Neuroblastoma Met/BM Publication/Från Gustav/Chosen Metastasis Markers (Executive Summary).xlsx")
+AllResults <- read_excel("~/Forskning/Neuroblastoma Met/BM Publication/Från Gustav/Merged Gene List with Fold-Changes & GSEA (MAST Random Slope, Absolute nFeature).xlsx")
+chosenGenesNames <- chosenGenes$Gene
+
+UpGenesMast <- MastResult$primerid[which(MastResult$coef > 0.3 & MastResult$BH_adj_p_val < 0.01)]
+DownGenesMast <- MastResult$primerid[which(MastResult$coef < 0.3 & MastResult$BH_adj_p_val < 0.01)]
+SignGenesMast <- c(UpGenesMast, DownGenesMast)
+```
+
+```{r Dotplot of upregulated genes}
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX3_BM", "PDX2_BM", "PDX1_BM", "PDX3_PT", "PDX2_PT", "PDX1_PT"))
+Figure8 <- DotPlot(IntegratedObject, features = UpGenesMast, group.by = "Cell_Line_n_Tissue") + RotatedAxis()
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX1_PT", "PDX2_PT", "PDX3_PT", "PDX1_BM", "PDX2_BM", "PDX3_BM"))
+Figure8
+```
+
+```{r Heatmap of Up genes}
+IntegratedObject <- ScaleData(IntegratedObject, assay = "SCT", features = SignGenesMast)
+HeatmapSer <- subset(IntegratedObject, features = SignGenesMast)
+HeatmapMatr <- GetAssayData(HeatmapSer, assay = "SCT", layer = "scale.data")
+HeatmapMatr <- HeatmapMatr[order(factor(rownames(HeatmapMatr), levels = SignGenesMast)), ]
+
+options(expressions = 500000) #Because it is very very nested, gives error
+
+HeatmapAnnotation <- HeatmapAnnotation(PDX = HeatmapSer$Cell_Line_n, Location = HeatmapSer$Tissue, col = list(PDX = PDX_colours, Location = Tissue_colours), annotation_label = c("PDX", "Site"), show_legend = FALSE)
+col_fun = colorRamp2(c(-2, 0, 2), c("#FF00FF", "#000000", "#FFFF00"))
+
+h <- Heatmap(HeatmapMatr, name = "clusteredHeatmap", cluster_rows = TRUE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = TRUE , top_annotation = HeatmapAnnotation, col = col_fun, use_raster = FALSE, column_title = "Clustered heatmap", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
+cellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
+typeLGND <- Legend(labels = c("PT", "BM"), title = "Site", legend_gp = gpar(fill = Tissue_colours))
+LGNDs <- packLegend(matrixLGND, cellLineLGND, typeLGND)
+
+Figure9 <- draw(h, annotation_legend_list = LGNDs)
+Figure9
+```
+
 
 
