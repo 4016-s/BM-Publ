@@ -19,6 +19,7 @@ library(hdf5r)
 library(SeuratData)
 library(ggrepel)
 library(tidyverse)
+library(readxl)
 ```
 
 ###Loading objects
@@ -34,6 +35,73 @@ MetaData <- readRDS("Från Gustav/Seurat Object Metadata.rds")
 #Loading DE results
 MastResult <- readRDS("Från Gustav/MAST Random Intercept Result.rds")
 EdgeRResult <- readRDS("Från Gustav/Edge R Result.rds")
+```
+
+```{r Setting colors}
+# Set PDX colours
+  PDX_colours <- setNames(c("#295692","#d09e53","#529fa6"), nm = sprintf("PDX%d",1:3))
+  PDX_colours_light <- setNames(colorspace::lighten(PDX_colours,amount = 0.3), nm = sprintf("PDX%d",1:3))
+  PDX_colours_dark <- setNames(colorspace::darken(PDX_colours,amount = 0.3), nm = sprintf("PDX%d",1:3))
+# View colours
+  all_colours <- c(PDX_colours_light,PDX_colours,PDX_colours_dark)
+  all_colours <- all_colours[order(names(all_colours))]
+  colorspace::demoplot(all_colours,type = "bar")
+  
+  # Import table
+  dataset_information <- read_excel("~/Forskning/Neuroblastoma Met/T10/Raw Files/Deducing Dataset Names.xlsx")
+# Make certain columns factor
+  dataset_information <- dataset_information %>%
+    mutate_at(vars(`Include in Analysis`, Folder, `Raw Matrix`, Original, `Presumed Cell Line`, `Mouse #`, Series, `Presumed Tissue`),
+              as.factor) %>%
+    arrange(Folder,`Current Folder Name`)
+# Filter the dataset
+  included_dataset_information <- dataset_information %>% 
+    filter(`Include in Analysis` == "Yes")
+  
+  sample_indices <- 1:15
+  
+  # Create metadata table
+  metadata_to_add <- included_dataset_information[sample_indices,] %>% 
+    select(`Seurat Object Name`,Folder,`Year Sequenced`,`Presumed Run`,`Current Folder Name`,Series,`Presumed Cell Line`,
+           `Presumed Tissue`,`Mouse #`) %>% 
+    mutate(`Seurat Object Name` = gsub("_Counts$", "", `Seurat Object Name`)) %>%
+    dplyr::rename(Cell_Line = `Presumed Cell Line`,
+                  Mouse_n = `Mouse #`,
+                  Tissue = `Presumed Tissue`) %>%
+    mutate(Cell_Line_n = case_when(
+      Cell_Line == "PALLAD" ~ "PDX1",
+      Cell_Line == "FORPA" ~ "PDX2",
+      Cell_Line == "LUNOV" ~ "PDX3",
+      TRUE ~ NA_character_
+    )) %>% 
+    mutate(Mouse_n = paste0(Series,"-",Cell_Line_n,"-",Mouse_n)) %>% 
+    mutate(Cell_Line_n = factor(x = Cell_Line_n,levels = c("PDX1", "PDX2", "PDX3")),
+           Tissue = relevel(Tissue, ref = "PT") ) %>% 
+    relocate(Cell_Line_n, .after = Cell_Line)
+# Generate sorted mouse ID string
+  mouse_ID_sorted <- unique(metadata_to_add %>% arrange(Cell_Line_n,Series,Mouse_n) %>% pull(Mouse_n) )
+# Make mouse ID factors
+  metadata_to_add <- metadata_to_add %>% mutate(Mouse_n = factor(x = Mouse_n, levels = mouse_ID_sorted))
+  
+# Create a vector to track how many times each PDX line appears
+  colour_use_count <- table(metadata_to_add$Cell_Line_n)
+# Generate the color palette vector using sapply
+  PDX_dataset_colours <- unlist(sapply(names(colour_use_count), function(i) {
+    if (colour_use_count[i] > 1) {
+      colorRampPalette(c(PDX_colours_dark[i], PDX_colours[i], PDX_colours_light[i]))(colour_use_count[i])
+    } else {
+      NULL
+    }
+  }))
+  names(PDX_dataset_colours) <- metadata_to_add$`Seurat Object Name`[order(metadata_to_add$Cell_Line_n)]
+# View the palette
+  pie_colours <- function(colours) pie(rep(1, length(colours)), col = colours, labels = names(colours))
+  pie_colours(PDX_dataset_colours)
+
+  Tissue_colours <- setNames(scales::hue_pal()(2), nm = rev(levels(IntegratedObject@meta.data$Tissue) ) )
+
+#Cluster colors, MetBrewer - Signac
+Cluster_colours <- c("1" = "#F4C40FFF", "2" = "#FE9B00FF", "3" = "#D8443CFF", "4" = "#9B3441FF", "5" = "#DE597CFF", "6" = "#E87B89FF","7" = "#E6A2A6FF", "8" = "#AA7AA1FF", "9" = "#9F5691FF", "10" = "#633372FF", "11" = "#1F6E9CFF", "12" = "#2B9B81FF", "13" = "#92C051FF")
 ```
 
 ###Visualizing Data
@@ -98,20 +166,42 @@ IntegratedObject <- RunUMAP(IntegratedObject, reduction.name = "umap.cca", reduc
 
 
 wrap_plots(
-  DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Cell_Line_n") + ggtitle("CCA Integrated Object"),
-  DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n") + ggtitle("Harmony Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("CCA Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("Harmony Integrated Object"),
   DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Cell_Line_n") + ggtitle("non-integrated Merged Object"),
-  DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Tissue") + ggtitle("CCA Integrated Object"),
-  DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue") + ggtitle("Harmony Integrated Object"),
-  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Tissue") + ggtitle("non-integrated Merged Object"),
+  DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Tissue", cols = Tissue_colours) + ggtitle("CCA Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("Harmony Integrated Object"),
+  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Tissue", cols = Tissue_colours) + ggtitle("non-integrated Merged Object"),
   ncol = 3
 )
 ```
 
 ```{r Visualizing Object}
-DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Mouse_n", ncol = 3)
-DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Cell_Line_n", ncol = 3)
+DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Mouse_n", ncol = 3, cols = Tissue_colours)
+DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Cell_Line_n", ncol = 3, cols = Tissue_colours)
 DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Mouse_n", split.by = "Cell_Line_n", ncol = 3)
+
+#Use same colors for PDX as Gustav
+Figure1 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("Grouped by Cell Line") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure1
+
+saveRDS(Figure1, "Figure1.rds")
+
+#Factoring Levels
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX1_PT", "PDX2_PT", "PDX3_PT", "PDX1_BM", "PDX2_BM", "PDX3_BM"))
+
+#Add colors, PDX specific for title and dots for Site
+DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Cell_Line_n_Tissue", ncol = 3, cols = Tissue_colours) + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = rep(PDX_colours, 2))) + ylab("UMAP_2") + xlab("UMAP_1")
+
+
+PT1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2")
+PT2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2]))
+PT3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3]))
+BM1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2") + xlab("UMAP 1")
+BM2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2])) + xlab("UMAP 1")
+BM3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3])) + xlab("UMAP 1")
+Figure2 <- wrap_plots(PT1plot, PT2plot, PT3plot, BM1plot, BM2plot, BM3plot, ncol = 3) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure2
 ```
 
 ###Finding Clusters
@@ -257,8 +347,15 @@ ggplot(resDF, aes(x = Resolution, y = ClusterNumber)) +
 IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
 IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.15)
 
-DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.15")
-DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", split.by = "seurat_clusters", ncol = 4) + ggtitle("Resolution 0.15")
+#Setting cluster names 1-13
+new.cluster.ids <- c(1:13) 
+names(new.cluster.ids) <- levels(IntegratedObject)
+IntegratedObject <- RenameIdents(IntegratedObject, new.cluster.ids)
+IntegratedObject$seurat_clusters <- Idents(IntegratedObject)
+
+Figure3 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters", cols = Cluster_colours) + ggtitle("Resolution 0.15") + ggtitle("Clustered") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure3
+DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", split.by = "seurat_clusters", ncol = 5, cols = PDX_colours) + ggtitle("Resolution 0.15")
 ```
 
 
@@ -398,7 +495,7 @@ PDX3Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Li
              length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
              length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100)
 
-clusterDF3 <- data.frame(PDX = PDXvec2, Cluster = clusterVec3, Percentage = c(PDX1Vec2, PDX2Vec2, PDX3Vec2))
+clusterDF3 <- data.frame(PDX = PDXvec2, Cluster = clusterVec3, Percentage = c(PDX1Vec, PDX2Vec, PDX3Vec))
 #Percentage Barplot with each clusters percentage in each PDX line is stacked to 100%
 ggplot(clusterDF3, aes(x = PDX, fill = factor(Cluster), y = Percentage)) +
   geom_bar(stat = "identity", position = "stack") +
@@ -406,6 +503,93 @@ ggplot(clusterDF3, aes(x = PDX, fill = factor(Cluster), y = Percentage)) +
   xlab("PDX") +
   ylab("Percentage of Cells") +
   theme_minimal()
+
+#Dataframe of each Cell_Line_n_Tissue composition of clusters by creating 3 vectors and combining
+PDXandSite <- rep(c("PDX1_PT", "PDX1_BM", "PDX2_PT", "PDX2_BM", "PDX3_PT", "PDX3_BM"), each = 13)
+Clusters <- rep(c(1:13), times = 6)
+PT1comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX1_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_PT"))
+  PT1comp <- c(PT1comp, comp)
+}
+PT2comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX2_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_PT"))
+  PT2comp <- c(PT2comp, comp)
+}
+PT3comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX3_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_PT"))
+  PT3comp <- c(PT3comp, comp)
+}
+BM1comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX1_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_BM"))
+  BM1comp <- c(BM1comp, comp)
+}
+BM2comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX2_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_BM"))
+  BM2comp <- c(BM2comp, comp)
+}
+BM3comp <- c()
+for (cluster in 1:13) {
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX3_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_BM"))
+  BM3comp <- c(BM3comp, comp)
+}
+CellLineTissueCompDF <- data.frame(PDX_Site <- PDXandSite, Cluster = Clusters, Percentage = c(PT1comp, BM1comp, PT2comp, BM2comp, PT3comp, BM3comp))
+CellLineTissueCompDF$Cluster <- factor(CellLineTissueCompDF$Cluster, levels = 1:13)
+CellLineTissueCompDF$PDX_Site <- factor(CellLineTissueCompDF$PDX_Site, levels = c("PDX1_PT", "PDX1_BM", "PDX2_PT", "PDX2_BM", "PDX3_PT", "PDX3_BM"))
+
+#Barplot
+ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Site, size=8)) + 
+  geom_bar(position = "fill", stat = "identity", width = 0.9) + 
+  ggtitle("Percentage of Clusters per PDX and Location") +
+  scale_fill_manual(values = Cluster_colours) +
+  scale_y_continuous(labels = scales::label_percent(), expand = c(0, 0)) +
+  scale_x_discrete(limits = c("PDX1_PT", "PDX1_BM", "", "PDX2_PT", "PDX2_BM", "", "PDX3_PT", "PDX3_BM"), labels = c("PT LU-NB-1", "BM LU-NB-1", "", "PT LU-NB-2", "BM LU-NB-2", "", "PT LU-NB-3", "BM LU-NB-3")) +
+  geom_text(aes(label = ifelse(Percentage > 3, round(Percentage, 2), "")), 
+            position = position_fill(vjust = 0.5), color =  "black", size = 4) +
+  theme_minimal() +
+  theme(
+  legend.position = "right",
+  legend.title = element_blank(),
+  axis.title.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.line.y = element_line(color = "black", linewidth = 1.5, lineend = "square"),
+  axis.ticks.y = element_line(color = "black", linewidth = 1.5),
+  axis.ticks.length.y = unit(0.2, "cm"),
+  axis.line.x = element_blank(),
+  axis.text.x = element_text(angle = 45, hjust = 1, size = 15, colour = c(PDX_colours[1], PDX_colours[1], PDX_colours[2], PDX_colours[2], PDX_colours[2], PDX_colours[3], PDX_colours[3])),
+  axis.text.y = element_text(size = 15),
+  panel.grid = element_blank(),
+  text = element_text(family = "sans", size = 12, color = "black")
+)
+
+```
+```{r Finding cluster markers}
+#Finding markers on log-normalized data
+clusterMarkers <- FindAllMarkers(IntegratedObject, group.by = "seurat_clusters", only.pos = FALSE, assay = "SCT", slot = "data" , min.pct = 0.1, logfc.threshold = 0.25)
+
+#Top 10 and top 5 per cluster
+clusterMarkers %>% 
+  group_by(cluster) %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  slice_head(n = 10) %>%
+  ungroup() -> top10Cluster
+clusterMarkers %>% 
+  group_by(cluster) %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  slice_head(n = 5) %>%
+  ungroup() -> top5Cluster
+```
+
+```{r Heatmap of top 10 genes per cluster}
+
+```
+
+```{r Dotplot of top 10 genes per cluster}
 
 ```
 
