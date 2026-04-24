@@ -1,5 +1,6 @@
 ---
 title: "BMvisualizing"
+author: "Nils Wergeland"
 format: html
 execute: 
   message: false
@@ -22,6 +23,9 @@ library(tidyverse)
 library(readxl)
 library(ComplexHeatmap)
 library(colorRamp2)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(enrichplot)
 ```
 
 ###Loading objects
@@ -102,6 +106,10 @@ EdgeRResult <- readRDS("Från Gustav/Edge R Result.rds")
 
   Tissue_colours <- setNames(scales::hue_pal()(2), nm = rev(levels(IntegratedObject@meta.data$Tissue) ) )
 
+  
+#Setting Colors manually
+PDX_colours <- c("LU-NB-1" = "#295692", "LU-NB-2" = "#d09e53", "LU-NB-3" = "#529fa6")
+  
 #Cluster colors, MetBrewer - Signac
 Cluster_colours <- c("1" = "#F4C40FFF", "2" = "#FE9B00FF", "3" = "#D8443CFF", "4" = "#9B3441FF", "5" = "#DE597CFF", "6" = "#E87B89FF","7" = "#E6A2A6FF", "8" = "#AA7AA1FF", "9" = "#9F5691FF", "10" = "#633372FF", "11" = "#1F6E9CFF", "12" = "#2B9B81FF", "13" = "#92C051FF")
 ```
@@ -109,17 +117,17 @@ Cluster_colours <- c("1" = "#F4C40FFF", "2" = "#FE9B00FF", "3" = "#D8443CFF", "4
 ###Visualizing Data
 ```{r Volcplot MAST}
 #Data frame with gene name, log2-fold change and adjusted p-value for MAST results, with significance if in MastUp or MastDown
-MastDF <- data.frame(Gene = MastResult$primerid, Log2FC = MastResult$MeanLog, AdjPValue = MastResult$BH_adj_p_val, Significant = ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$MeanLog > 1, "Upregulated", ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$MeanLog < -1, "Downregulated", "Not Significant")))
+MastDF <- data.frame(Gene = MastResult$primerid, Log2FC = MastResult$coef, AdjPValue = MastResult$BH_adj_p_val, Significant = ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$coef > 0.3, "Upregulated", ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$coef < -0.3, "Downregulated", "Not Significant")))
 
 #List of genes with adjusted p-value < 0.01 and log2-fold change > 2
-MastUp <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC > 1) %>% pull(Gene)
+MastUp <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC > 0.3) %>% pull(Gene)
 #List of genes with adjusted p-value < 0.01 and log2-fold change < -2
-MastDown <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC < -1) %>% pull(Gene)
+MastDown <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC < -0.3) %>% pull(Gene)
 
 #Volcano plot for MAST results, lines for significance borders and label and colors for significant genes
 ggplot(MastDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point() +
-  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_vline(xintercept = c(-0.3, 0.3), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.01), linetype = "dashed") +
   geom_text_repel(data = MastDF %>% filter(Significant != "Not Significant"), aes(label = Gene), size = 3)
 ```
@@ -151,6 +159,14 @@ ggplot(EdgeRDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
 ```
 
 ```{r Size of groups}
+#Changing PDX_ to LU-NB-_
+IntegratedObject$Cell_Line_n <- as.character(IntegratedObject$Cell_Line_n)
+IntegratedObject$Cell_Line_n[IntegratedObject$Cell_Line_n == "PDX1"] <- "LU-NB-1"
+IntegratedObject$Cell_Line_n[IntegratedObject$Cell_Line_n == "PDX2"] <- "LU-NB-2"
+IntegratedObject$Cell_Line_n[IntegratedObject$Cell_Line_n == "PDX3"] <- "LU-NB-3"
+IntegratedObject$Cell_Line_n <- as.factor(IntegratedObject$Cell_Line_n)
+
+
 #Adding grouped metadata for easier plotting
 IntegratedObject$Cell_Line_n_Tissue <- paste(IntegratedObject$Cell_Line_n, IntegratedObject$Tissue, sep = "_")
 IntegratedObject$Mouse_n_Tissue <- paste(IntegratedObject$Mouse_n, IntegratedObject$Tissue, sep = "_")
@@ -170,7 +186,7 @@ IntegratedObject <- RunUMAP(IntegratedObject, reduction.name = "umap.cca", reduc
 wrap_plots(
   DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("CCA Integrated Object"),
   DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("Harmony Integrated Object"),
-  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Cell_Line_n") + ggtitle("non-integrated Merged Object"),
+  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("non-integrated Merged Object"),
   DimPlot(IntegratedObject, reduction = "umap.cca", group.by = "Tissue", cols = Tissue_colours) + ggtitle("CCA Integrated Object"),
   DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("Harmony Integrated Object"),
   DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Tissue", cols = Tissue_colours) + ggtitle("non-integrated Merged Object"),
@@ -184,24 +200,24 @@ DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split
 DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Mouse_n", split.by = "Cell_Line_n", ncol = 3)
 
 #Use same colors for PDX as Gustav
-Figure1 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("Grouped by Cell Line") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure1 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = PDX_colours) + ggtitle("Grouped by Cell Line") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
 Figure1
 
 saveRDS(Figure1, "Figure1.rds")
 
 #Factoring Levels
-IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX1_PT", "PDX2_PT", "PDX3_PT", "PDX1_BM", "PDX2_BM", "PDX3_BM"))
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"))
 
 #Add colors, PDX specific for title and dots for Site
-DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Cell_Line_n_Tissue", ncol = 3, cols = Tissue_colours) + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = rep(PDX_colours, 2))) + ylab("UMAP_2") + xlab("UMAP_1")
+DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Tissue", split.by = "Cell_Line_n_Tissue", ncol = 3, cols = Tissue_colours) + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = "black")) + ylab("UMAP_2") + xlab("UMAP_1")
 
 
-PT1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2")
-PT2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2]))
-PT3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3]))
-BM1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2") + xlab("UMAP 1")
-BM2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2])) + xlab("UMAP 1")
-BM3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3])) + xlab("UMAP 1")
+PT1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-1_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2")
+PT2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-2_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2]))
+PT3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-3_PT"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("PT LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3]))
+BM1plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-1_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2") + xlab("UMAP 1")
+BM2plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-2_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2])) + xlab("UMAP 1")
+BM3plot <- DimPlot(IntegratedObject, cells = WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-3_BM"), reduction = "umap.harmony", group.by = "Tissue", cols = Tissue_colours) + ggtitle("BM LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3])) + xlab("UMAP 1")
 Figure2 <- wrap_plots(PT1plot, PT2plot, PT3plot, BM1plot, BM2plot, BM3plot, ncol = 3) + ylab("UMAP_2") + xlab("UMAP_1")
 Figure2
 ```
@@ -209,109 +225,109 @@ Figure2
 ###Finding Clusters
 ```{r Clustering With different resolutions}
 #Clustering with res 0.9
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.9)
-ClustRes09 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.9")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.9)
+#ClustRes09 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.9")
 
 #0.8
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.8)
-ClustRes08 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.8")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.8)
+#ClustRes08 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.8")
 
 #0.7
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.7)
-ClustRes07 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.7")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.7)
+#ClustRes07 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.7")
 
 #0.6
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.6)
-ClustRes06 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.6")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.6)
+#ClustRes06 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.6")
 
 #0.5
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.5)
-ClustRes05 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.5")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.5)
+#ClustRes05 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.5")
 
 #0.4
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.4)
-ClustRes04 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.4")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.4)
+#ClustRes04 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.4")
 
 #0.3
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.3)
-ClustRes03 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.3")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.3)
+#ClustRes03 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.3")
 
 #0.2
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
-ClustRes02 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.2")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
+#ClustRes02 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.2")
 
-#0.1
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.1)
-ClustRes01 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.1")
+##0.1
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.1)
+#ClustRes01 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.1")
 
 #Visualizing clusters with different resolutions
-wrap_plots(
-  ClustRes09, ClustRes08, ClustRes07, ClustRes06, ClustRes05, ClustRes04, ClustRes03, ClustRes02, ClustRes01,
-  ncol = 3
-)
+#wrap_plots(
+#  ClustRes09, ClustRes08, ClustRes07, ClustRes06, ClustRes05, ClustRes04, ClustRes03, ClustRes02, #ClustRes01,
+#  ncol = 3
+#)
 ```
 
 ```{r Finding clusters with smaller resolutions}
 #Finding clusters with smaller resolutions
 #0.2
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
-ClustRes20 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.2")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.2)
+#ClustRes20 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.2")
 
 #0.18
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.18)
-ClustRes18 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.18")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.18)
+#ClustRes18 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.18")
 
 #0.16
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.16)
-ClustRes16 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.16")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.16)
+#ClustRes16 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.16")
 
 #0.14
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.14)
-ClustRes14 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.14")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.14)
+#ClustRes14 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.14")
 
 #0.12
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.12)
-ClustRes12 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.12")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.12)
+#ClustRes12 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.12")
 
 #0.10
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.10)
-ClustRes10 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.10")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.10)
+#ClustRes10 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.10")
 
 #0.08
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.08)
-ClustRes08 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.08")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.08)
+#ClustRes08 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.08")
 
 #0.06
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.06)
-ClustRes06 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.06")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.06)
+#ClustRes06 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.06")
 
 #0.04
-IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
-IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.04)
-ClustRes04 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + ggtitle("Resolution 0.04")
+#IntegratedObject <- FindNeighbors(IntegratedObject, reduction = "integrated.harmony", dims = 1:30)
+#IntegratedObject <- FindClusters(IntegratedObject, resolution = 0.04)
+#ClustRes04 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters") + #ggtitle("Resolution 0.04")
 
 #Visualizing clusters with different resolutions
-wrap_plots(
-  ClustRes20, ClustRes18, ClustRes16, ClustRes14, ClustRes12, ClustRes10, ClustRes08, ClustRes06, ClustRes04,
-  ncol = 3
-)
+#wrap_plots(
+#  ClustRes20, ClustRes18, ClustRes16, ClustRes14, ClustRes12, ClustRes10, ClustRes08, ClustRes06, #ClustRes04,
+#  ncol = 3
+#)
 
 ```
 
@@ -331,18 +347,18 @@ wrap_plots(
 #  resList[[as.character(res)]] <- clustnbr
 #}
 
-saveRDS(resList, "Number of clusters at different resolutions.rds")
-resList <- readRDS("Number of clusters at different resolutions.rds")
+#saveRDS(resList, "Number of clusters at different resolutions.rds")
+#resList <- readRDS("Number of clusters at different resolutions.rds")
 
 #Ggplot of changes in cluster number with different resolutions
-resDF <- data.frame(Resolution = as.numeric(names(resList)), ClusterNumber = unlist(resList))
-ggplot(resDF, aes(x = Resolution, y = ClusterNumber)) +
-  geom_line() +
-  geom_point() +
-  ggtitle("Number of Clusters at Different Resolutions") +
-  xlab("Resolution") +
-  ylab("Number of Clusters") +
-  theme_minimal()
+#resDF <- data.frame(Resolution = as.numeric(names(resList)), ClusterNumber = unlist(resList))
+#ggplot(resDF, aes(x = Resolution, y = ClusterNumber)) +
+#  geom_line() +
+#  geom_point() +
+#  ggtitle("Number of Clusters at Different Resolutions") +
+#  xlab("Resolution") +
+#  ylab("Number of Clusters") +
+#  theme_minimal()
 ```
 
 ```{r Setting resolution, watching results}
@@ -356,7 +372,7 @@ names(new.cluster.ids) <- levels(IntegratedObject)
 IntegratedObject <- RenameIdents(IntegratedObject, new.cluster.ids)
 IntegratedObject$seurat_clusters <- Idents(IntegratedObject)
 
-Figure3 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters", cols = Cluster_colours) + ggtitle("Resolution 0.15") + ggtitle("Clustered") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, family = "sans", color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure3 <- DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "seurat_clusters", cols = Cluster_colours) + ggtitle("Resolution 0.15") + ggtitle("Clustered") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
 Figure3
 DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", split.by = "seurat_clusters", ncol = 5, cols = PDX_colours) + ggtitle("Resolution 0.15")
 ```
@@ -364,185 +380,42 @@ DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n", 
 
 ###Investigate clusters
 ```{r Composition of clusters}
-#Creating a dataframe with clusters, and percentage of each cell line. First creating a vector of cluster, then a vector of PDXlines, then a vector of percentages
-clusterVec <- rep(0:12, times = 3)
-PDXvec <- rep(c("PDX1", "PDX2", "PDX3"), each = 13)
-PDX1Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 0)) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 1)) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 2)) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 3)) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 4)) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 5)) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 6)) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 7)) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 8)) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 9)) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 10)) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 11)) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, ident = 12)) * 100)
-PDX2Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 0)) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 1)) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 2)) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 3)) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 4)) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 5)) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 6)) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 7)) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 8)) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 9)) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 10)) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 11)) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, ident = 12)) * 100)
-PDX3Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 0)) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 1)) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 2)) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 3)) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 4)) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 5)) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 6)) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 7)) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 8)) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 9)) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 10)) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 11)) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, ident = 12)) * 100)
-
-clusterDF <- data.frame(Cluster = clusterVec, PDX = PDXvec, Percentage = c(PDX1Vec, PDX2Vec, PDX3Vec))
-
-ggplot(clusterDF, aes(x = factor(Cluster), y = Percentage, fill = PDX)) +
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = c("PDX1" = "red", "PDX2" = "blue", "PDX3" = "green")) +
-  ggtitle("Percentage of Each PDX in Each Cluster") +
-  xlab("Cluster") +
-  ylab("Percentage of Cells") +
-  theme_minimal()
-
-#Creating a dataframe with clusters, and percentage of each tissue. First creating a vector of clusters, then a vector of tissues, then a vector of percentages
-clusterVec2 <- rep(0:12, times = 2)
-TissueVec <- rep(c("BM", "PT"), each = 13)
-BMVec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 0)) * 100,
-           length(WhichCells(IntegratedObject, ident = 1, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 1)) * 100,
-           length(WhichCells(IntegratedObject, ident = 2, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 2)) * 100,
-           length(WhichCells(IntegratedObject, ident = 3, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 3)) * 100,
-           length(WhichCells(IntegratedObject, ident = 4, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 4)) * 100,
-           length(WhichCells(IntegratedObject, ident = 5, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 5)) * 100,
-           length(WhichCells(IntegratedObject, ident = 6, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 6)) * 100,
-           length(WhichCells(IntegratedObject, ident = 7, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 7)) * 100,
-           length(WhichCells(IntegratedObject, ident = 8, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 8)) * 100,
-           length(WhichCells(IntegratedObject, ident = 9, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 9)) * 100,
-           length(WhichCells(IntegratedObject, ident = 10, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 10)) * 100,
-           length(WhichCells(IntegratedObject, ident = 11, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 11)) * 100,
-           length(WhichCells(IntegratedObject, ident = 12, expression = Tissue == "BM")) / length(WhichCells(IntegratedObject, ident = 12)) * 100)
-PTVec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 0)) * 100,
-           length(WhichCells(IntegratedObject, ident = 1, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 1)) * 100,
-           length(WhichCells(IntegratedObject, ident = 2, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 2)) * 100,
-           length(WhichCells(IntegratedObject, ident = 3, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 3)) * 100,
-           length(WhichCells(IntegratedObject, ident = 4, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 4)) * 100,
-           length(WhichCells(IntegratedObject, ident = 5, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 5)) * 100,
-           length(WhichCells(IntegratedObject, ident = 6, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 6)) * 100,
-           length(WhichCells(IntegratedObject, ident = 7, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 7)) * 100,
-           length(WhichCells(IntegratedObject, ident = 8, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 8)) * 100,
-           length(WhichCells(IntegratedObject, ident = 9, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 9)) * 100,
-           length(WhichCells(IntegratedObject, ident = 10, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 10)) * 100,
-           length(WhichCells(IntegratedObject, ident = 11, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 11)) * 100,
-           length(WhichCells(IntegratedObject, ident = 12, expression = Tissue == "PT")) / length(WhichCells(IntegratedObject, ident = 12)) * 100)
-clusterDF2 <- data.frame(Cluster = clusterVec2, Tissue = TissueVec, Percentage = c(BMVec, PTVec))
-ggplot(clusterDF2, aes(x = factor(Cluster), y = Percentage, fill = Tissue)) +
-  geom_bar(stat = "identity", position = "stack") +
-  scale_fill_manual(values = c("BM" = "purple", "PT" = "cyan")) +
-  ggtitle("Percentage of Each Tissue in Each Cluster") +
-  xlab("Cluster") +
-  ylab("Percentage of Cells") +
-  theme_minimal()
-
-#Creating a dataframe with PDX, and percentage of each cluster. First creating a vector of PDXlines, then a vector of clusters, then a vector of percentages
-PDXvec2 <- rep(c("PDX1", "PDX2", "PDX3"), each = 13)
-clusterVec3 <- rep(0:12, times = 3)
-PDX1Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX1")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX1")) * 100)
-PDX2Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX2")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX2")) * 100)
-PDX3Vec <- c(length(WhichCells(IntegratedObject, ident = 0, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 1, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 2, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 3, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 4, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 5, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 6, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 7, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 8, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 9, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 10, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 11, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100,
-             length(WhichCells(IntegratedObject, ident = 12, expression = Cell_Line_n == "PDX3")) / length(WhichCells(IntegratedObject, expression = Cell_Line_n == "PDX3")) * 100)
-
-clusterDF3 <- data.frame(PDX = PDXvec2, Cluster = clusterVec3, Percentage = c(PDX1Vec, PDX2Vec, PDX3Vec))
-#Percentage Barplot with each clusters percentage in each PDX line is stacked to 100%
-ggplot(clusterDF3, aes(x = PDX, fill = factor(Cluster), y = Percentage)) +
-  geom_bar(stat = "identity", position = "stack") +
-  ggtitle("Percentage of Each Cluster in Each PDX") +
-  xlab("PDX") +
-  ylab("Percentage of Cells") +
-  theme_minimal()
-
 #Dataframe of each Cell_Line_n_Tissue composition of clusters by creating 3 vectors and combining
-PDXandSite <- rep(c("PDX1_PT", "PDX1_BM", "PDX2_PT", "PDX2_BM", "PDX3_PT", "PDX3_BM"), each = 13)
+PDXandSite <- rep(c("LU-NB-1_PT", "LU-NB-1_BM", "LU-NB-2_PT", "LU-NB-2_BM", "LU-NB-3_PT", "LU-NB-3_BM"), each = 13)
 Clusters <- rep(c(1:13), times = 6)
 PT1comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX1_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_PT"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-1_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-1_PT"))
   PT1comp <- c(PT1comp, comp)
 }
 PT2comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX2_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_PT"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-2_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-2_PT"))
   PT2comp <- c(PT2comp, comp)
 }
 PT3comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX3_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_PT"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-3_PT"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-3_PT"))
   PT3comp <- c(PT3comp, comp)
 }
 BM1comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX1_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX1_BM"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-1_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-1_BM"))
   BM1comp <- c(BM1comp, comp)
 }
 BM2comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX2_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX2_BM"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-2_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-2_BM"))
   BM2comp <- c(BM2comp, comp)
 }
 BM3comp <- c()
 for (cluster in 1:13) {
-  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "PDX3_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "PDX3_BM"))
+  comp = 100*length(WhichCells(IntegratedObject, idents = cluster, expression = Cell_Line_n_Tissue == "LU-NB-3_BM"))/length(WhichCells(IntegratedObject, expression = Cell_Line_n_Tissue == "LU-NB-3_BM"))
   BM3comp <- c(BM3comp, comp)
 }
 CellLineTissueCompDF <- data.frame(PDX_Site <- PDXandSite, Cluster = Clusters, Percentage = c(PT1comp, BM1comp, PT2comp, BM2comp, PT3comp, BM3comp))
 CellLineTissueCompDF$Cluster <- factor(CellLineTissueCompDF$Cluster, levels = 1:13)
-CellLineTissueCompDF$PDX_Site <- factor(CellLineTissueCompDF$PDX_Site, levels = c("PDX1_PT", "PDX1_BM", "PDX2_PT", "PDX2_BM", "PDX3_PT", "PDX3_BM"))
+CellLineTissueCompDF$PDX_Site <- factor(CellLineTissueCompDF$PDX_Site, levels = c("LU-NB-1_PT", "LU-NB-1_BM", "LU-NB-2_PT", "LU-NB-2_BM", "LU-NB-3_PT", "LU-NB-3_BM"))
 
 #Barplot
 Figure4 <- ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Site, size=8)) + 
@@ -550,7 +423,7 @@ Figure4 <- ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Si
   ggtitle("Percentage of Clusters per PDX and Location") +
   scale_fill_manual(values = Cluster_colours) +
   scale_y_continuous(labels = scales::label_percent(), expand = c(0, 0)) +
-  scale_x_discrete(limits = c("PDX1_PT", "PDX1_BM", "", "PDX2_PT", "PDX2_BM", "", "PDX3_PT", "PDX3_BM"), labels = c("PT LU-NB-1", "BM LU-NB-1", "", "PT LU-NB-2", "BM LU-NB-2", "", "PT LU-NB-3", "BM LU-NB-3")) +
+  scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-1_BM", "", "LU-NB-2_PT", "LU-NB-2_BM", "", "LU-NB-3_PT", "LU-NB-3_BM"), labels = c("PT LU-NB-1", "BM LU-NB-1", "", "PT LU-NB-2", "BM LU-NB-2", "", "PT LU-NB-3", "BM LU-NB-3")) +
   geom_text(aes(label = ifelse(Percentage > 3, round(Percentage, 2), "")), 
             position = position_fill(vjust = 0.5), color =  "black", size = 4) +
   theme_minimal() +
@@ -567,7 +440,7 @@ Figure4 <- ggplot(CellLineTissueCompDF, aes(fill=Cluster, y=Percentage, x=PDX_Si
   axis.text.x = element_text(angle = 45, hjust = 1, size = 15, colour = c(PDX_colours[1], PDX_colours[1], PDX_colours[2], PDX_colours[2], PDX_colours[2], PDX_colours[3], PDX_colours[3])),
   axis.text.y = element_text(size = 15),
   panel.grid = element_blank(),
-  text = element_text(family = "sans", size = 12, color = "black")
+  text = element_text(size = 12, color = "black")
 )
 Figure4
 
@@ -611,7 +484,7 @@ Figure7 <- ggplot(TissueCompDF, aes(fill=Cluster, y=Percentage, x=Site, size=8))
   axis.text.x = element_text(angle = 0, hjust = 0.5, size = 20, colour = c(Tissue_colours[1], Tissue_colours[2])),
   axis.text.y = element_text(size = 15),
   panel.grid = element_blank(),
-  text = element_text(family = "sans", size = 12, color = "black")
+  text = element_text(size = 12, color = "black")
 )
 Figure7
 ```
@@ -831,53 +704,6 @@ length(rownames(IntegratedObject[["SCT"]]@scale.data)) # Scaled, 782 genes.
 
 ```
 
-```{r Trying SCTransform with more Varible Features}
-IntObj2k <- IntegratedObject
-DefaultAssay(IntObj2k) <- "RNA"
-IntObj2k[["SCT"]] <- NULL
-
-#SCTransform, same as Gustav + variable.features.n = 2000
-IntObj2k <- SCTransform(IntObj2k,vars.to.regress = c("nFeature_RNA", "nCount_RNA", "percent_mito", "cc_difference", "percent_ribo"), return.only.var.genes = FALSE, verbose = TRUE, variable.features.n = 2000)
-# Set Default Assay
-DefaultAssay(IntObj2k) <- "SCT"
-
-#Checking number of genes in the scaled data of the SCT assay
-length(rownames(IntObj2k[["SCT"]])) # 21790 genes
-length(rownames(IntObj2k[["SCT"]]@data)) # Normalized
-length(rownames(IntObj2k[["SCT"]]@scale.data)) # Scaled
-```
-
-```{r Doing the rest of the integration and UMAP pipeline}
-# Run PCA
-IntObj2k <- RunPCA(IntObj2k, seed.use = 1999,verbose = FALSE)
-
-#UMAP unintegrated
-IntObj2k <- RunUMAP(IntObj2k, reduction.name = "umap.preintegration", reduction = "pca", dims = 1:30, verbose = FALSE, seed.use = 1999)
-
-# Run one-line integration
-IntObj2k <- IntegrateLayers(
-    object = IntObj2k, method = HarmonyIntegration,
-    orig.reduction = "pca", dims = 1:30,
-    new.reduction = "integrated.harmony",
-    normalization.method = "SCT", k.weight = 57,
-    verbose = FALSE
-  )
-
-#UMAP unintegrated
-IntObj2k <- RunUMAP(IntObj2k, reduction.name = "umap.harmony", reduction = "integrated.harmony", dims = 1:30, verbose = FALSE, seed.use = 1999)
-
-wrap_plots(
-  DimPlot(IntObj2k, reduction = "umap.preintegration", group.by = "Cell_Line_n") + ggtitle("Pre-integration UMAP with more genes"),
-  DimPlot(IntObj2k, reduction = "umap.harmony", group.by = "Cell_Line_n") + ggtitle("Harmony Integrated UMAP"),
-  DimPlot(IntegratedObject, reduction = "umap.merged", group.by = "Cell_Line_n") + ggtitle("non-integrated Merged UMAP"),
-  DimPlot(IntegratedObject, reduction = "umap.harmony", group.by = "Cell_Line_n") + ggtitle("Harmony Integrated UMAP"),
-  ncol = 2
-)
-
-saveRDS(IntObj2k, "IntObj with var.genes.n set to 2k.rds")
-```
-
-
 ###Checking BM markers
 ```{r Removing stuff :)}
 rm(cellLineLGND, CellLineTissueCompDF, clusterDF, clusterDF2, clusterDF3, clusterLGND, dataset_information, fullHTMap, h0, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, Heatmap1, Heatmap2, Heatmap3, Heatmap4, Heatmap5, Heatmap6, Heatmap7, Heatmap8, Heatmap9, Heatmap10, Heatmap11, Heatmap12, Heatmap13, Heatmap1Matr, Heatmap2Matr, Heatmap3Matr, Heatmap4Matr, Heatmap5Matr, Heatmap6Matr, Heatmap7Matr, Heatmap8Matr, Heatmap9Matr, Heatmap10Matr, Heatmap11Matr, Heatmap12Matr, Heatmap13Matr, Heatmap1Annotation, Heatmap2Annotation, Heatmap3Annotation, Heatmap4Annotation, Heatmap5Annotation, Heatmap6Annotation, Heatmap7Annotation, Heatmap8Annotation, Heatmap9Annotation, Heatmap10Annotation, Heatmap11Annotation, Heatmap12Annotation, Heatmap13Annotation, included_dataset_information, LGNDs, matrixLGND, metadata_to_add, subplots, TissueCompDF, typeLGND, BM1comp, BM1plot, BM2comp, BM2plot, BM3comp, BM3plot, BMcomp, BMVec, cluster, Clusters, clusterVec, clusterVec2, clusterVec3, colour_use_count, comp, i, mouse_ID_sorted, new.cluster.ids, PDX_Site, PDX1Vec, PDX2Vec, PDX3Vec, PDXandSite, PDXvec, PDXvec2, PT1comp, PT1plot, PT2comp, PT2plot, PT3comp, PT3plot, PTcomp, PTVec, sample_indices, Site, TissueVec, title_colors, col_fun, pie_colours)
@@ -896,33 +722,216 @@ SignGenesMast <- c(UpGenesMast, DownGenesMast)
 ```
 
 ```{r Dotplot of upregulated genes}
-IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX3_BM", "PDX2_BM", "PDX1_BM", "PDX3_PT", "PDX2_PT", "PDX1_PT"))
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-3_BM", "LU-NB-2_BM", "LU-NB-1_BM", "LU-NB-3_PT", "LU-NB-2_PT", "LU-NB-1_PT"))
 Figure8 <- DotPlot(IntegratedObject, features = UpGenesMast, group.by = "Cell_Line_n_Tissue") + RotatedAxis()
-IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("PDX1_PT", "PDX2_PT", "PDX3_PT", "PDX1_BM", "PDX2_BM", "PDX3_BM"))
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"))
 Figure8
 ```
 
 ```{r Heatmap of Up genes}
-IntegratedObject <- ScaleData(IntegratedObject, assay = "SCT", features = SignGenesMast)
-HeatmapSer <- subset(IntegratedObject, features = SignGenesMast)
+IntegratedObject <- ScaleData(IntegratedObject, assay = "SCT", features = UpGenesMast)
+HeatmapSer <- subset(IntegratedObject, features = UpGenesMast)
 HeatmapMatr <- GetAssayData(HeatmapSer, assay = "SCT", layer = "scale.data")
-HeatmapMatr <- HeatmapMatr[order(factor(rownames(HeatmapMatr), levels = SignGenesMast)), ]
+HeatmapMatr <- HeatmapMatr[order(factor(rownames(HeatmapMatr), levels = UpGenesMast)), ]
 
 options(expressions = 500000) #Because it is very very nested, gives error
 
 HeatmapAnnotation <- HeatmapAnnotation(PDX = HeatmapSer$Cell_Line_n, Location = HeatmapSer$Tissue, col = list(PDX = PDX_colours, Location = Tissue_colours), annotation_label = c("PDX", "Site"), show_legend = FALSE)
 col_fun = colorRamp2(c(-2, 0, 2), c("#FF00FF", "#000000", "#FFFF00"))
 
-h <- Heatmap(HeatmapMatr, name = "clusteredHeatmap", cluster_rows = TRUE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = TRUE , top_annotation = HeatmapAnnotation, col = col_fun, use_raster = FALSE, column_title = "Clustered heatmap", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+h <- Heatmap(HeatmapMatr, name = "clusteredHeatmap", cluster_rows = TRUE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = TRUE, top_annotation = HeatmapAnnotation, col = col_fun, use_raster = FALSE, column_title = "Clustered heatmap", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
 
 matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
 cellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
-typeLGND <- Legend(labels = c("PT", "BM"), title = "Site", legend_gp = gpar(fill = Tissue_colours))
+typeLGND <- Legend(labels = c("BM", "PT"), title = "Site", legend_gp = gpar(fill = Tissue_colours))
 LGNDs <- packLegend(matrixLGND, cellLineLGND, typeLGND)
 
 Figure9 <- draw(h, annotation_legend_list = LGNDs)
 Figure9
 ```
 
+```{r gseaKEGG och gseaGO från MAST}
+#Skapa lista med fold-change
+gseaGeneList <- MastResult$coef
+names(gseaGeneList) <- MastResult$primerid
+GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db) #översätter till entrez
+
+gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
+names(gseaGeneList) <- GeneNameDF$ENTREZID
+gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+
+#Running GSEA
+KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
+GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE)
+GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, measure = "Wang")
+
+#Plotting KEGG
+DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
+DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
+
+Figure10 <- ggplot(DFKEGGResult, aes(x = reorder(Description, p.adjust), y = -log(p.adjust), fill = NES)) +
+  geom_col(width = 0.8) +
+  labs(x = NULL, y = "-log 10 Adjusted P-value", title = "KEGG GSEA") +
+  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"), 
+        axis.text.x = element_text(angle = 60, hjust = 1)
+  )
+
+DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
+DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
+
+Figure11 <- ggplot(DFGOResult, aes(x = reorder(Description, p.adjust), y = -log(p.adjust), fill = NES)) +
+  geom_col(width = 0.8) +
+  labs(x = NULL, y = "-log 10 Adjusted P-value", title = "GO GSEA") +
+  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"), 
+        axis.text.x = element_text(angle = 60, hjust = 1)
+  )
+
+```
+
+```{r Calculating BM scores}
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(chosenGenesNames), name = "BM1score")
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(UpGenesMast), name = "BM2score")
+
+VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Tissue", pt.size = 0)
+VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Cell_Line_n_Tissue", pt.size = 0)
+VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Mouse_n_Tissue", pt.size = 0)
+
+BM1mean <- mean(IntegratedObject$BM1score1[IntegratedObject$Tissue == "BM"])
+BM2mean <- mean(IntegratedObject$BM2score1[IntegratedObject$Tissue == "BM"])
+
+```
+```{r Finding PT cells with high BMscore}
+PTCells <- subset(IntegratedObject, Tissue == "PT")
+
+FeaturePlot(PTCells, features = "BM1score1")
+FeaturePlot(PTCells, features = "BM2score1")
+
+VlnPlot(PTCells, features = c("BM1score1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
+VlnPlot(PTCells, features = c("BM2score1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
+
+PTCells$BM1Like <- ifelse(PTCells$BM1score1 > BM1mean, "BM1Like", "Not BM1Like")
+PTCells$BM2Like <- ifelse(PTCells$BM2score1 > BM2mean, "BM2Like", "Not BM2Like")
+
+Figure12 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BM1Like", order = c("BM1Like", "Not BM1Like"), cols = c("BM1Like" = "red", "Not BM1Like" = "lightgrey")) + ggtitle("BM-Like PT cells (chosen genes)")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure13 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BM2Like", order = c("BM2Like", "Note BM2Like"), cols = c("BM2Like" = "red", "Not BM2Like" = "lightgrey")) + ggtitle("BM-Like PT cells (All DE genes))")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+
+#Barplot with % BM1Like per Cell line
+CellLine <- c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra")
+Signature <- c(rep(c("BM"), 3), "Extra")
+Percentage <- c(c(length(WhichCells(PTCells, expression = BM1Like == "BM1Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BM1Like == "BM1Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BM1Like == "BM1Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.3))
+
+barplotData1 <- data.frame(CellLine, Signature, Percentage)
+
+Figure14 <- ggplot(barplotData1, aes(fill=Signature, y=Percentage, x=CellLine)) + 
+  geom_col() + 
+  ggtitle("Percentage cells with BM profile (chosen Genes)") +
+  scale_fill_manual(values = c("BM" = "#E6550D", "Extra" = "white")) +
+  scale_y_continuous(breaks = seq(0, 0.30, by = 0.05), labels = scales::label_percent(), expand = c(0, 0)) +
+  scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3", "")) +
+  theme_minimal() +
+  geom_text(aes(label = 100*round(Percentage, 4)), position = position_dodge(width = 1), vjust = -0.5, color = "black", size = 4) +
+  theme(
+  legend.position = "right",
+  legend.title = element_blank(),
+  axis.title.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.line.y = element_line(color = "black", linewidth = 1.5, lineend = "square"),
+  axis.ticks.y = element_line(color = "black", linewidth = 1.5),
+  axis.ticks.length.y = unit(0.2, "cm"),
+  axis.line.x = element_blank(),
+  axis.text.x = element_text(size = 15, , colour = c(PDX_colours[1], PDX_colours[2], PDX_colours[3])),
+  axis.text.y = element_text(size = 15),
+  panel.grid = element_blank(),
+  text = element_text(size = 12, color = "black")
+)
+Figure14
+
+#Barplot with % BM2Like per Cell line
+CellLine <- c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra")
+Signature <- c(rep(c("BM"), 3), "Extra")
+Percentage <- c(c(length(WhichCells(PTCells, expression = BM2Like == "BM1Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BM2Like == "BM2Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BM2Like == "BM2Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.2))
+
+barplotData2 <- data.frame(CellLine, Signature, Percentage)
+
+Figure15 <- ggplot(barplotData2, aes(fill=Signature, y=Percentage, x=CellLine)) + 
+  geom_col() + 
+  ggtitle("Percentage cells with BM profile (All DE Genes)") +
+  scale_fill_manual(values = c("BM" = "#E6550D", "Extra" = "white")) +
+  scale_y_continuous(breaks = seq(0, 0.20, by = 0.05), labels = scales::label_percent(), expand = c(0, 0)) +
+  scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3", "")) +
+  theme_minimal() +
+  geom_text(aes(label = 100*round(Percentage, 4)), position = position_dodge(width = 1), vjust = -0.5, color = "black", size = 4) +
+  theme(
+  legend.position = "right",
+  legend.title = element_blank(),
+  axis.title.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.line.y = element_line(color = "black", linewidth = 1.5, lineend = "square"),
+  axis.ticks.y = element_line(color = "black", linewidth = 1.5),
+  axis.ticks.length.y = unit(0.2, "cm"),
+  axis.line.x = element_blank(),
+  axis.text.x = element_text(size = 15, , colour = c(PDX_colours[1], PDX_colours[2], PDX_colours[3])),
+  axis.text.y = element_text(size = 15),
+  panel.grid = element_blank(),
+  text = element_text(size = 12, color = "black")
+)
+
+Figure12
+Figure13
+Figure14
+Figure15
+```
+```{r Saving all Plots}
+setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
+
+#Function that saves plots, from Gustav
+saveplots <- function(object,location,filename,w = 900,h = 900,pointsize = 12,res = 150){
+  png(paste0(location,filename,".png"),width = w, height = h, units = "px", pointsize = pointsize, res = res)
+  print(object)
+  dev.off()
+  ggsave(path = location,filename = paste0(filename,".eps"), plot = object,width = w,height = h,dpi = res, units = "px")
+}
 
 
+saveplots(Figure1, "../BM Publication/", "UMAP PDX", w = 1050)
+saveplots(Figure2, "../BM Publication/", "UMAP split", w = 1200)
+saveplots(Figure3, "../BM Publication/", "UMAP Clustered", w = 1050)
+saveplots(Figure4, "../BM Publication/", "Barplot Clusters in PDX")
+
+#saveplots(Figure5, "../", "Heatmap Clustermarkers")
+cairo_ps("Heatmap Clustermarkers.eps", width = 4000, height = 2500)
+Figure5
+dev.off()
+png("Heatmap Clustermarkers.png", width = 4000, height = 2500, res = 300)
+Figure5
+dev.off()
+
+saveplots(Figure6, "../BM Publication/", "Dotplot Clustermarkers", w = 3000)
+saveplots(Figure7, "../BM Publication/", "Barplot Clusters in Site")
+saveplots(Figure8, "../BM Publication/", "Dotplot DEG", w = 3000)
+
+#saveplots(Figure9, "../", "Heatmap DEG")
+cairo_ps("Heatmap DEG.png", width = 3000, height = 2500)
+Figure9
+dev.off()
+png("Heatmap DEG.png", width = 3000, height = 2500, res = 300)
+Figure9
+dev.off()
+
+saveplots(Figure10, "../BM Publication/", "Barplot GSEA KEGG", w = 2000)
+saveplots(Figure11, "../BM Publication/", "Barplot GSEA GO", w = 2000)
+saveplots(Figure12, "../BM Publication/", "UMAP BM1Like PT Cells", w = 1050)
+saveplots(Figure13, "../BM Publication/", "UMAP BM2Like PT Cells", w = 1050)
+setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
+saveplots(Figure14, "../BM Publication/", "Barplot BM1Like PT Cells in PDX")
+saveplots(Figure15, "../BM Publication/", "Barplot BM2Like PT Cells in PDX")
+
+```
