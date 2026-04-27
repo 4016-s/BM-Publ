@@ -749,7 +749,75 @@ LGNDs <- packLegend(matrixLGND, cellLineLGND, typeLGND)
 
 Figure9 <- draw(h, annotation_legend_list = LGNDs)
 Figure9
+
+#saveplots(Figure9, "../", "Heatmap DEG")
+cairo_ps("Heatmap DEG.eps", width = 3000, height = 2500)
+Figure9
+dev.off()
+png("Heatmap DEG.png", width = 3000, height = 2500, res = 300)
+Figure9
+dev.off()
 ```
+
+```{r Heatmap of top 50 up and down}
+Top50Up <- UpGenesMast[1:50]
+Top50Down <- DownGenesMast[1:50]
+HeatmapGeneList <- c(Top50Up, Top50Down)
+
+IntegratedObject <- ScaleData(IntegratedObject, assay = "SCT", features = HeatmapGeneList)
+HeatmapSer <- subset(IntegratedObject, features = HeatmapGeneList)
+HeatmapMatr <- GetAssayData(HeatmapSer, assay = "SCT", layer = "scale.data")
+HeatmapMatr <- HeatmapMatr[order(factor(rownames(HeatmapMatr), levels = HeatmapGeneList)), ]
+
+options(expressions = 500000) #Because it is very very nested, gives error
+
+HeatmapAnnotation <- HeatmapAnnotation(PDX = HeatmapSer$Cell_Line_n, Location = HeatmapSer$Tissue, col = list(PDX = PDX_colours, Location = Tissue_colours), annotation_label = c("PDX", "Site"), show_legend = FALSE)
+HeatmapAnnotationRow <- rowAnnotation(Signature = ifelse(rownames(HeatmapMatr) %in% Top50Up, "BM", "PT"), show_legend = FALSE, col = list(Signature = Tissue_colours), annotation_label = c(" "))
+
+h2 <- Heatmap(HeatmapMatr, name = "clusteredHeatmap", cluster_rows = TRUE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = TRUE, top_annotation = HeatmapAnnotation, left_annotation = HeatmapAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Clustered Heatmap", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
+cellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
+typeLGND <- Legend(labels = c("BM", "PT"), title = "Site", legend_gp = gpar(fill = Tissue_colours))
+GeneSignLGND <- Legend(labels = c("PT", "BM"), title = "Gene signature", legend_gp = gpar(fill = Tissue_colours))
+LGNDs2 <- packLegend(matrixLGND, cellLineLGND, typeLGND, GeneSignLGND)
+
+HeatmapTop50 <- draw(h2, annotation_legend_list = LGNDs2)
+
+cairo_ps("Heatmap DEG top50.eps", width = 3000, height = 3500)
+HeatmapTop50
+dev.off()
+png("Heatmap DEG top50.png", width = 3000, height = 3500, res = 300)
+HeatmapTop50
+dev.off()
+```
+
+```{r Heatmap only BM}
+OnlyBM <- subset(IntegratedObject, Tissue == "BM")
+
+OnlyBM <- ScaleData(OnlyBM, assay = "SCT", features = UpGenesMast)
+BMHeatmapSer <- subset(OnlyBM, features = UpGenesMast)
+BMHeatmapMatr <- GetAssayData(BMHeatmapSer, assay = "SCT", layer = "scale.data")
+BMHeatmapMatr <- BMHeatmapMatr[order(factor(rownames(BMHeatmapMatr), levels = UpGenesMast)), ]
+
+HeatmapAnnotationBM <- HeatmapAnnotation(PDX = BMHeatmapSer$Cell_Line_n, col = list(PDX = PDX_colours), annotation_label = c("PDX"), show_legend = FALSE)
+
+hBM <- Heatmap(BMHeatmapMatr, name = "clusteredHeatmap", cluster_rows = TRUE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = TRUE, top_annotation = HeatmapAnnotationBM, col = col_fun, use_raster = FALSE, column_title = "Clustered heatmap BM", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+
+matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
+cellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
+LGNDsBM <- packLegend(matrixLGND, cellLineLGND)
+
+HeatmapBM <- draw(hBM, annotation_legend_list = LGNDsBM)
+
+cairo_ps("Heatmap DEG BM.eps", width = 2000, height = 2000)
+HeatmapBM
+dev.off()
+png("Heatmap DEG BM.png", width = 2000, height = 2000, res = 300)
+HeatmapBM
+dev.off()
+```
+
 
 ```{r gseaKEGG och gseaGO från MAST}
 #Skapa lista med fold-change
@@ -771,7 +839,7 @@ DFKEGGResult <- KEGGResult@result
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 
-Figure10 <- ggplot(DFKEGGResult, aes(x = reorder(Description, p.adjust), y = -log(p.adjust), fill = NES)) +
+Figure10 <- ggplot(DFKEGGResult, aes(x = reorder(Description, p.adjust), y = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = NULL, y = "-log 10 Adjusted P-value", title = "KEGG GSEA") +
   scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
@@ -784,7 +852,8 @@ DFGOResult <- GOResult@result
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 
-Figure11 <- ggplot(DFGOResult, aes(x = reorder(Description, p.adjust), y = -log(p.adjust), fill = NES)) +
+
+Figure11 <- ggplot(DFGOResult, aes(x = reorder(Description, p.adjust), y = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = NULL, y = "-log 10 Adjusted P-value", title = "GO GSEA") +
   scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
@@ -793,20 +862,26 @@ Figure11 <- ggplot(DFGOResult, aes(x = reorder(Description, p.adjust), y = -log(
         axis.text.x = element_text(angle = 60, hjust = 1)
   )
 
+saveplots(Figure10, "../BM Publication/", "Barplot GSEA KEGG (Neg p.adjust)", w = 2000)
+saveplots(Figure11, "../BM Publication/", "Barplot GSEA GO (Neg p.adjust)", w = 2000)
 ```
 
 ```{r Calculating BM scores}
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(chosenGenesNames), name = "BM1score")
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(UpGenesMast), name = "BM2score")
 
-VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Tissue", pt.size = 0)
-VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Cell_Line_n_Tissue", pt.size = 0)
+BMScoreSite <- VlnPlot(IntegratedObject, features = c("BM2score1"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)
+BMScorePDXSite <- VlnPlot(IntegratedObject, features = c("BM2score1"), group.by = "Cell_Line_n_Tissue", pt.size = 0, cols = c("LU-NB-1_PT" = "#295692", "LU-NB-1_BM" = "#295692", "LU-NB-2_PT" = "#d09e53", "LU-NB-2_BM" = "#d09e53", "LU-NB-3_PT" = "#529fa6", "LU-NB-3_BM" = "#529fa6"))
 VlnPlot(IntegratedObject, features = c("BM1score1", "BM2score1"), group.by = "Mouse_n_Tissue", pt.size = 0)
+
+saveplots(BMScoreSite, "../BM Publication/", "VlnPlot BMscore Site")
+saveplots(BMScorePDXSite, "../BM Publication/", "VlnPlot BMscore PDX Site", w = 2000)
 
 BM1mean <- mean(IntegratedObject$BM1score1[IntegratedObject$Tissue == "BM"])
 BM2mean <- mean(IntegratedObject$BM2score1[IntegratedObject$Tissue == "BM"])
 
 ```
+
 ```{r Finding PT cells with high BMscore}
 PTCells <- subset(IntegratedObject, Tissue == "PT")
 
@@ -814,7 +889,9 @@ FeaturePlot(PTCells, features = "BM1score1")
 FeaturePlot(PTCells, features = "BM2score1")
 
 VlnPlot(PTCells, features = c("BM1score1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
-VlnPlot(PTCells, features = c("BM2score1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
+BMScoreCluster <- VlnPlot(PTCells, features = c("BM2score1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
+
+saveplots(BMScoreCluster, "../BM Publication/", "VlnPlot BMscore PTCluster", w = 2000)
 
 PTCells$BM1Like <- ifelse(PTCells$BM1score1 > BM1mean, "BM1Like", "Not BM1Like")
 PTCells$BM2Like <- ifelse(PTCells$BM2score1 > BM2mean, "BM2Like", "Not BM2Like")
@@ -890,11 +967,14 @@ Figure13
 Figure14
 Figure15
 ```
+
+
 ```{r Saving all Plots}
 setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
 
 #Function that saves plots, from Gustav
 saveplots <- function(object,location,filename,w = 900,h = 900,pointsize = 12,res = 150){
+  setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
   png(paste0(location,filename,".png"),width = w, height = h, units = "px", pointsize = pointsize, res = res)
   print(object)
   dev.off()
@@ -919,16 +999,6 @@ saveplots(Figure6, "../BM Publication/", "Dotplot Clustermarkers", w = 3000)
 saveplots(Figure7, "../BM Publication/", "Barplot Clusters in Site")
 saveplots(Figure8, "../BM Publication/", "Dotplot DEG", w = 3000)
 
-#saveplots(Figure9, "../", "Heatmap DEG")
-cairo_ps("Heatmap DEG.png", width = 3000, height = 2500)
-Figure9
-dev.off()
-png("Heatmap DEG.png", width = 3000, height = 2500, res = 300)
-Figure9
-dev.off()
-
-saveplots(Figure10, "../BM Publication/", "Barplot GSEA KEGG", w = 2000)
-saveplots(Figure11, "../BM Publication/", "Barplot GSEA GO", w = 2000)
 saveplots(Figure12, "../BM Publication/", "UMAP BM1Like PT Cells", w = 1050)
 saveplots(Figure13, "../BM Publication/", "UMAP BM2Like PT Cells", w = 1050)
 setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
