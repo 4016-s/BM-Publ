@@ -488,6 +488,7 @@ Figure7 <- ggplot(TissueCompDF, aes(fill=Cluster, y=Percentage, x=Site, size=8))
 )
 Figure7
 ```
+
 ```{r Finding cluster markers}
 #Finding markers on log-normalized data
 IntegratedObject <- PrepSCTFindMarkers(IntegratedObject)
