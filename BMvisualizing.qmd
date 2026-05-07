@@ -771,7 +771,7 @@ dev.off()
 png("Heatmap DEG.png", width = 3000, height = 2500, res = 300)
 Figure9
 dev.off()
-svg("Heatmap DEG.svg", width = 25, height = 15)
+svg("Heatmap DEG.svg", width = 15, height = 8)
 Figure9
 dev.off()
 ```
@@ -807,7 +807,7 @@ dev.off()
 png("Heatmap DEG top50.png", width = 3000, height = 3500, res = 300)
 HeatmapTop50
 dev.off()
-svg("Heatmap DEG top50.svg", width = 25, height = 20)
+svg("Heatmap DEG top50.svg", width = 15, height = 10)
 HeatmapTop50
 dev.off()
 ```
@@ -838,7 +838,7 @@ dev.off()
 png("Heatmap DEG BM.png", width = 2000, height = 2000, res = 300)
 HeatmapBM
 dev.off()
-svg("Heatmap DEG BM.svg", width = 20, height = 15)
+svg("Heatmap DEG BM.svg", width = 12, height = 8)
 HeatmapBM
 dev.off()
 ```
@@ -864,7 +864,10 @@ PTh<- Heatmap(HeatmapMatrPT, name = "clusteredHeatmap", cluster_rows = FALSE, cl
 hAll <- BMh + PTh
 HeatmapTop50unClust <- draw(hAll, ht_gap = unit(1, "mm"), annotation_legend_list = LGNDs2)
 
-svg("Heatmap DEG not clustered.svg", width = 25, height = 20)
+png("Heatmap DEG not clustered.png", width = 3000, height = 3500, res = 300)
+HeatmapTop50unClust
+dev.off()
+svg("Heatmap DEG not clustered.svg", width = 15, height = 10)
 HeatmapTop50unClust
 dev.off()
 ```
@@ -891,7 +894,9 @@ DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 #I want the dataframe to have all the pathways with negative NES first, ordered by p.adjust, then all pathways with positive NES, ordered by p.adjust.
 #DFKEGGResult <- DFKEGGResult[order(DFKEGGResult$NES < 0, DFKEGGResult$p.adjust), ]
+DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
 UpKegg <- DFKEGGResult$Description[DFKEGGResult$NES > 0]
+DFKEGGResult <- DFKEGGResult[order(DFKEGGResult$p.adjust), ]
 DownKegg <- DFKEGGResult$Description[DFKEGGResult$NES < 0]
 order <- c(DownKegg, UpKegg)
 DFKEGGResult$Description <- factor(DFKEGGResult$Description, levels = order)
@@ -910,7 +915,9 @@ DFGOResult <- GOResult@result
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 #DFGOResult <- DFGOResult[order(DFGOResult$NES < 0, DFGOResult$p.adjust), ]
+DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
 UpGO <- DFGOResult$Description[DFGOResult$NES > 0]
+DFGOResult <- DFGOResult[order(DFGOResult$p.adjust), ]
 DownGO <- DFGOResult$Description[DFGOResult$NES < 0]
 order <- c(DownGO, UpGO)
 DFGOResult$Description <- factor(DFGOResult$Description, levels = order)
@@ -934,8 +941,11 @@ svg("Barplot GSEA GO (Neg p.adjust).svg", width = 20)
 Figure11
 dev.off()
 
-DFKEGG10 <- rbind(head(DFKEGGResult[order(-DFKEGGResult$NES), ], 10), head(DFKEGGResult[order(DFKEGGResult$NES), ], 10))
-DFGO10 <- rbind(head(DFGOResult[order(-DFGOResult$NES), ], 10), head(DFGOResult[order(DFGOResult$NES), ], 10))
+
+#DFKEGG10 <- rbind(head(KeggPos[order(KeggPos$p.adjust), ], 10), head(KeggNeg[order(KeggNeg$p.adjust), ], 13))
+#DFGO10 <- rbind(head(GOPos[order(GOPos$p.adjust), ], 10), head(GONeg[order(GONeg$p.adjust), ], 10))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), DFKEGGResult[DFKEGGResult$Description %in% UpKegg, ])
+DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
 
 Figure16 <- ggplot(DFKEGG10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), y = Description, fill = NES)) +
   geom_col(width = 0.8) +
@@ -946,7 +956,7 @@ Figure16 <- ggplot(DFKEGG10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjus
   )
 Figure17 <- ggplot(DFGO10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), y = Description, fill = NES)) +
   geom_col(width = 0.8) +
-  labs(x = "-log 10 Adjusted P-value", y = NULL, title = "KEGG GSEA") +
+  labs(x = "-log 10 Adjusted P-value", y = NULL, title = "GO GSEA") +
   scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold")
@@ -956,7 +966,7 @@ saveplots(Figure16, "../BM Publication/", "Barplot GSEA KEGG top10")
 svg("Barplot GSEA KEGG top10.svg")
 Figure16
 dev.off()
-saveplots(Figure17, "../BM Publication/", "Barplot GSEA GO top10")
+saveplots(Figure17, "../BM Publication/", "Barplot GSEA GO top10", w = 1100)
 svg("Barplot GSEA GO top10.svg")
 Figure17
 dev.off()
