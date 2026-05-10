@@ -126,19 +126,44 @@ saveplots <- function(object,location,filename,w = 900,h = 900,pointsize = 12,re
 ###Visualizing Data
 ```{r Volcplot MAST}
 #Data frame with gene name, log2-fold change and adjusted p-value for MAST results, with significance if in MastUp or MastDown
-MastDF <- data.frame(Gene = MastResult$primerid, Log2FC = MastResult$coef, AdjPValue = MastResult$BH_adj_p_val, Significant = ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$coef > 0.3, "Upregulated", ifelse(MastResult$BH_adj_p_val < 0.01 & MastResult$coef < -0.3, "Downregulated", "Not Significant")))
+MastDF <- data.frame(Gene = MastResult$primerid, Log2FC = MastResult$coef, AdjPValue = MastResult$`Pr(>Chisq)`, Significant = ifelse(MastResult$`Pr(>Chisq)` < 0.05 & MastResult$coef > 0.25, "Upregulated", ifelse(MastResult$`Pr(>Chisq)` < 0.05 & MastResult$coef < -0.25, "Downregulated", "Not Significant")))
 
 #List of genes with adjusted p-value < 0.01 and log2-fold change > 2
-MastUp <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC > 0.3) %>% pull(Gene)
+MastUp <- MastDF %>% filter(AdjPValue < 0.05 & Log2FC > 0.25) %>% pull(Gene)
 #List of genes with adjusted p-value < 0.01 and log2-fold change < -2
-MastDown <- MastDF %>% filter(AdjPValue < 0.01 & Log2FC < -0.3) %>% pull(Gene)
+MastDown <- MastDF %>% filter(AdjPValue < 0.05 & Log2FC < -0.25) %>% pull(Gene)
+
+top_genes <- MastDF %>%
+  arrange(AdjPValue) %>%
+  dplyr::slice(1:60)
 
 #Volcano plot for MAST results, lines for significance borders and label and colors for significant genes
 ggplot(MastDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point() +
-  geom_vline(xintercept = c(-0.3, 0.3), linetype = "dashed") +
-  geom_hline(yintercept = -log10(0.01), linetype = "dashed") +
+  geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
   geom_text_repel(data = MastDF %>% filter(Significant != "Not Significant"), aes(label = Gene), size = 3)
+
+VolcanoplotMast <- ggplot(MastDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+  geom_point(alpha = 0.5) +
+  scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
+  scale_color_manual(values = c("Downregulated" = "#6BAED6", #"#00AFBB"
+                                "Not significant" = "grey",
+                                "Upregulated" = "#E6550D")) +
+  geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_point(size = 1) +
+  geom_text_repel(data = top_genes, aes(label = Gene), size = 2, max.overlaps = 20) +
+  theme_minimal() +
+  labs(title = "PT-BM: Differentially Expressed Genes",
+       x = "Average ln Fold Change",
+       y = "-log10 P-value")
+
+saveplots(VolcanoplotMast, "../BM Publication/", "Volcanoplot Mast results")
+svg("Volcanoplot Mast results.svg")
+VolcanoplotMast
+dev.off()
+VolcanoplotMast
 ```
 
 ```{r Volcplot EdgeR}
@@ -156,14 +181,6 @@ ggplot(EdgeRDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.01), linetype = "dashed") +
   geom_text_repel(data = EdgeRDF %>% filter(Significant != "Not Significant"), aes(label = Gene), size = 3)
-
-```
-
-```{r Comparing MAST and EdgeR log2-fold change}
-
-```
-
-```{r Comparing MAST and EdgeR p-value}
 
 ```
 
@@ -640,7 +657,7 @@ LGNDs <- packLegend(matrixLGND, clusterLGND, cellLineLGND, typeLGND)
 fullHTMap <- h1 + h2 + h3 + h4 + h5 + h6 + h7 + h8 + h9 + h10 + h11 + h12 + h13
 Figure5 <- draw(fullHTMap, ht_gap = unit(1, "mm"), annotation_legend_list = LGNDs)
 
-svg("Heatmap DEG.svg", width = 25, height = 20)
+svg("Heatmap DEG.svg", width = 15, height = 8)
 Figure5
 dev.off()
 
@@ -652,6 +669,7 @@ IntegratedObject$seurat_clusters <- factor(IntegratedObject$seurat_clusters, lev
 Figure6 <- DotPlot(IntegratedObject, features = top5Cluster, group.by = "seurat_clusters") + RotatedAxis()
 Figure6
 
+IntegratedObject$seurat_clusters <- factor(IntegratedObject$seurat_clusters, levels = 1:13)
 ```
 
 ###Checking Mesenchymal and Adrenergic markers
@@ -660,38 +678,71 @@ ADRNgenes <- c("TH", "DBH", "CHGA", "PHOX2B", "GATA3", "MYCN", "PHOX2A")
 MESgenes <- c("CD44", "FN1", "COL1A1", "RUNX2", "WWTR1", "IRF1", "SNAI2", "VIM")
 
 #Feature plots for ADRN and MES markers
-FeaturePlot(IntegratedObject, features = ADRNgenes, reduction = "umap.harmony", ncol = 4)
-FeaturePlot(IntegratedObject, features = MESgenes, reduction = "umap.harmony", ncol = 4)
+FeaturePlot(IntegratedObject, features = ADRNgenes, reduction = "umap.harmony", ncol = 4, cols = c("lightgrey", "orange"))
+FeaturePlot(IntegratedObject, features = MESgenes, reduction = "umap.harmony", ncol = 4, cols = c("lightgrey", "navy"))
 
 #VlnPlot for ADRN and MES markers per cluster
-VlnPlot(IntegratedObject, features = ADRNgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data") + ggtitle("ADRN Markers")
-VlnPlot(IntegratedObject, features = MESgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data") + ggtitle("MES Markers")
+VlnPlot(IntegratedObject, features = ADRNgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data", pt.size = 0) + ggtitle("ADRN Markers")
+VlnPlot(IntegratedObject, features = MESgenes, group.by = "seurat_clusters", ncol = 4, assay="RNA", layer="data", pt.size = 0) + ggtitle("MES Markers")
 
 #AddModuleScore fro ADRN and MES
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(ADRNgenes), name = "ADRN_Score", assay="RNA", layer="data")
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(MESgenes), name = "MES_Score", assay="RNA", layer="data")
+IntegratedObject$ADRNMESdiff <- scale(IntegratedObject$ADRN_Score1) - scale(IntegratedObject$MES_Score1)
 
 #VlnPlot for ADRN and MES score per cluster
-VlnPlot(IntegratedObject, features = c("ADRN_Score1"), group.by = "seurat_clusters", ncol = 1) + ggtitle("ADRN Score")
-VlnPlot(IntegratedObject, features = c("MES_Score1"), group.by = "seurat_clusters", ncol = 1) + ggtitle("MES Score")
+VlnAC <- VlnPlot(IntegratedObject, features = c("ADRN_Score1"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing") + ggtitle("ADRN Score")+ geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + ggpubr::stat_compare_means(method = "anova", label.y = max(IntegratedObject@meta.data$ADRN_Score1, na.rm = TRUE) * 0.95)
+VlnMC <- VlnPlot(IntegratedObject, features = c("MES_Score1"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing") + ggtitle("MES Score") + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + ggpubr::stat_compare_means(method = "anova", label.y = max(IntegratedObject@meta.data$MES_Score1, na.rm = TRUE) * 0.95)
+VlnDC <- VlnPlot(IntegratedObject, features = c("ADRNMESdiff"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing") + ggtitle("Adrn - Mes difference") + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + ggpubr::stat_compare_means(method = "anova", label.y = max(IntegratedObject@meta.data$ADRNMESdiff, na.rm = TRUE) * 0.95)
 
-FeaturePlot(IntegratedObject, features = c("ADRN_Score1", "MES_Score1"), reduction = "umap.harmony", min.cutoff = "q10", max.cutoff = "q90", blend = TRUE, cols = c("lightgrey", "orange", "navy"), combine = FALSE) + ggtitle("ADRN and MES Scores")
+AdrnMesCluster <- wrap_plots(VlnAC, VlnMC, VlnDC, ncol = 3)
 
-FeatureScatter(IntegratedObject, feature1 = "ADRN_Score1", feature2 = "MES_Score1", split.by = "seurat_clusters", ncol = 7) + ggtitle("ADRN vs MES Score")
+saveplots(AdrnMesCluster, "../BM Publication/",  "Vlnplot ADRN_MES_Score_Cluster", w = 3000)
+svg("Vlnplot ADRN_MES_Score_Cluster.svg", width = 12)
+AdrnMesCluster
+dev.off()
+
+FeatureplotAdrnMes <- FeaturePlot(IntegratedObject, features = c("ADRN_Score1", "MES_Score1"), reduction = "umap.harmony", min.cutoff = "q10", max.cutoff = "q90", blend = TRUE, cols = c("lightgrey", "orange", "navy"), combine = FALSE) + ggtitle("ADRN and MES Scores")
+
+saveplots(AdrnMesCluster, "../BM Publication/", "Featureplot ADRN_MES_Score", w = 1050)
+svg("Featureplot ADRN_MES_Score.svg")
+FeatureplotAdrnMes
+dev.off()
+
+ScatterplotSplit <- FeatureScatter(IntegratedObject, feature1 = "ADRN_Score1", feature2 = "MES_Score1", split.by = "seurat_clusters", ncol = 7, group.by = "seurat_clusters", cols = Cluster_colours)
+
+saveplots(ScatterplotSplit, "../BM Publication/", "Scatterplot ADRN_MES_Score split", w = 2000)
+svg("Scatterplot ADRN_MES_Score split.svg", width = 15, height = 8)
+ScatterplotSplit
+dev.off()
+
+ScatterplotAM <- FeatureScatter(IntegratedObject, feature1 = "ADRN_Score1", feature2 = "MES_Score1", group.by = "seurat_clusters", cols = Cluster_colours) + ggtitle("ADRN vs MES Score") + geom_smooth(method = 'lm')
+
+saveplots(ScatterplotAM, "../BM Publication/", "Scatterplot ADRN_MES_Score")
+svg("Scatterplot ADRN_MES_Score.svg")
+ScatterplotAM
+dev.off()
 
 #Calculate average score per cluster, ADRN score and MES scores are stored as metadata for each cell
 ADRNscores  <- aggregate(IntegratedObject$ADRN_Score1, by = list(Cluster = IntegratedObject$seurat_clusters), FUN = mean)
 MESscores  <- aggregate(IntegratedObject$MES_Score1, by = list(Cluster = IntegratedObject$seurat_clusters), FUN = mean)
+ADRNMESdiff <- aggregate(IntegratedObject$ADRNMESdiff, by = list(Cluster = IntegratedObject$seurat_clusters), FUN = mean)
 
 #Barplot of average ADRN and MES score per cluster. 2 Bars per cluster, one ADRN and one MES, with different colors
-scoreDF <- data.frame(Cluster = rep(ADRNscores$Cluster, 2), Score = c(ADRNscores$x, MESscores$x), Type = rep(c("ADRN", "MES"), each = nrow(ADRNscores)))
-ggplot(scoreDF, aes(x = factor(Cluster), y = Score, fill = Type)) +
+scoreDF <- data.frame(Cluster = rep(ADRNscores$Cluster, 3), Score = c(ADRNscores$x, MESscores$x, ADRNMESdiff$x), Type = rep(c("ADRN", "MES", "Difference"), each = nrow(ADRNscores)))
+BarplotAMD <- ggplot(scoreDF, aes(x = factor(Cluster), y = Score, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
-  scale_fill_manual(values = c("ADRN" = "orange", "MES" = "navy")) +
-  ggtitle("Average ADRN and MES Score per Cluster") +
+  scale_fill_manual(values = c("ADRN" = "orange", "MES" = "navy", "Difference" = "red")) +
+  ggtitle("Average ADRN and MES Score and difference per Cluster") +
   xlab("Cluster") +
   ylab("Average Score") +
   theme_minimal()
+
+saveplots(BarplotAMD, "../BM Publication/", "Barplot ADRN_MES_Score")
+svg("Barplot ADRN_MES_Score.svg")
+BarplotAMD
+dev.off()
+
 
 #Percentage of cells with higher ADRN than MES score, or higher MES score than ADRN score, per cluster.
 scoreDF2 <- data.frame(Cluster = unique(IntegratedObject$seurat_clusters), ADRN_Higher = NA, MES_Higher = NA)
@@ -713,10 +764,6 @@ ggplot(scoreDF2_long, aes(x = factor(Cluster), y = Percentage, fill = Type)) +
   ylab("Percentage of Cells") +
   theme_minimal()
 
-length(rownames(IntegratedObject[["SCT"]]))
-length(rownames(IntegratedObject[["SCT"]]@data)) # Normalized data, 21790 genes
-length(rownames(IntegratedObject[["SCT"]]@scale.data)) # Scaled, 782 genes. 
-
 ```
 
 ###Checking BM markers
@@ -731,16 +778,18 @@ chosenGenes <- read_excel("~/Forskning/Neuroblastoma Met/BM Publication/Från Gu
 AllResults <- read_excel("~/Forskning/Neuroblastoma Met/BM Publication/Från Gustav/Merged Gene List with Fold-Changes & GSEA (MAST Random Slope, Absolute nFeature).xlsx")
 chosenGenesNames <- chosenGenes$Gene
 
-UpGenesMast <- MastResult$primerid[which(MastResult$coef > 0.3 & MastResult$BH_adj_p_val < 0.01)]
-DownGenesMast <- MastResult$primerid[which(MastResult$coef < 0.3 & MastResult$BH_adj_p_val < 0.01)]
+hist(MastResult$`Pr(>Chisq)`)
+
+UpGenesMast <- MastResult$primerid[which(MastResult$coef > 0.25 & MastResult$`Pr(>Chisq)` < 0.05 & MastResult$qvalue < 0.05)]
+DownGenesMast <- MastResult$primerid[which(MastResult$coef < 0.25 & MastResult$`Pr(>Chisq)` < 0.05 & MastResult$qvalue < 0.05)]
 SignGenesMast <- c(UpGenesMast, DownGenesMast)
 ```
 
 ```{r Dotplot of upregulated genes}
 IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-3_BM", "LU-NB-2_BM", "LU-NB-1_BM", "LU-NB-3_PT", "LU-NB-2_PT", "LU-NB-1_PT"))
-Figure8 <- DotPlot(IntegratedObject, features = UpGenesMast, group.by = "Cell_Line_n_Tissue") + RotatedAxis()
+DotPlot(IntegratedObject, features = UpGenesMast, group.by = "Cell_Line_n_Tissue") + RotatedAxis()
 IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"))
-Figure8
+
 ```
 
 ```{r Heatmap of Up genes}
@@ -976,50 +1025,96 @@ dev.off()
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(chosenGenesNames), name = "BM1score")
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(UpGenesMast), name = "BM2score")
 
-BMBgenes <- c("HIST1H4C", "ATP5ME", "PPIA", "RPL27", "RPL9", "MIF")
+BMBgenes <- c("RPL27A", "RPS20", "RPL9", "RPL27", "RPS17", "HIST1H4C", "PPIA", "TMSB10", "MIF", "ATP5F1E", "ATP5ME", "PCBP2", "C4orf48")
 BMAgenes <- UpGenesMast[!UpGenesMast %in% BMBgenes]
-IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMBgenes), name = "BMBscore")
-IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMAgenes), name = "BMAscore")
 
+DotplotGenes <- c(c(head(BMBgenes, n = 5)), c(head(BMAgenes, n = 5)), c(head(DownGenesMast, n = 5)))
+
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-3_BM", "LU-NB-2_BM", "LU-NB-1_BM", "LU-NB-3_PT", "LU-NB-2_PT", "LU-NB-1_PT"))
+Figure8 <- DotPlot(IntegratedObject, features = DotplotGenes, group.by = "Cell_Line_n_Tissue") + RotatedAxis()
 IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"))
+Figure8
 
-BMScoreSite <- VlnPlot(IntegratedObject, features = c("BMAscore1", "BMBscore1"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)
-BMScorePDXSite <- VlnPlot(IntegratedObject, features = c("BMAscore1", "BMBscore1"), group.by = "Cell_Line_n_Tissue", pt.size = 0, cols = c("LU-NB-1_PT" = "#295692", "LU-NB-1_BM" = "#295692", "LU-NB-2_PT" = "#d09e53", "LU-NB-2_BM" = "#d09e53", "LU-NB-3_PT" = "#529fa6", "LU-NB-3_BM" = "#529fa6"))
-VlnPlot(IntegratedObject, features = c("BMAscore1", "BMBscore1"), group.by = "Mouse_n_Tissue", pt.size = 0)
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMBgenes), name = "BM-Bscore")
+IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMAgenes), name = "BM-Ascore")
+IntegratedObject$BMdiff <- scale(IntegratedObject$BMAscore1) - scale(IntegratedObject$BMBscore1)
 
-saveplots(BMScoreSite, "../BM Publication/", "VlnPlot BMscore Site")
-saveplots(BMScorePDXSite, "../BM Publication/", "VlnPlot BMscore PDX Site", w = 2000)
-svg("VlnPlot BMscore Site.svg")
+saveRDS(BMAgenes, "BMAgenes.rds")
+saveRDS(BMBgenes, "BMBgenes.rds")
+
+IntegratedObject$Cell_Line_n_Tissue <- factor(IntegratedObject$Cell_Line_n_Tissue, levels = c("LU-NB-1_PT", "LU-NB-1_BM", "LU-NB-2_PT", "LU-NB-2_BM", "LU-NB-3_PT", "LU-NB-3_BM"))
+
+VlnBMATissue <- VlnPlot(IntegratedObject, features = c("BM-Ascore1"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)+ geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + 
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+VlnBMBTissue <- VlnPlot(IntegratedObject, features = c("BM-Bscore1"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)+ geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + 
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+VlnBMdiffTissue <- VlnPlot(IntegratedObject, features = c("BMdiff"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)+ geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + 
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+
+BMScoreSite <- wrap_plots(VlnBMATissue, VlnBMBTissue, VlnBMdiffTissue, ncol = 3)
+
+VlnBMAPDX <- VlnPlot(IntegratedObject, features = c("BM-Ascore1"), group.by = "Cell_Line_n_Tissue", pt.size = 0, cols = c("LU-NB-1_PT" = "#295692", "LU-NB-1_BM" = "#295692", "LU-NB-2_PT" = "#d09e53", "LU-NB-2_BM" = "#d09e53", "LU-NB-3_PT" = "#529fa6", "LU-NB-3_BM" = "#529fa6")) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+VlnBMBPDX <- VlnPlot(IntegratedObject, features = c("BM-Bscore1"), group.by = "Cell_Line_n_Tissue", pt.size = 0, cols = c("LU-NB-1_PT" = "#295692", "LU-NB-1_BM" = "#295692", "LU-NB-2_PT" = "#d09e53", "LU-NB-2_BM" = "#d09e53", "LU-NB-3_PT" = "#529fa6", "LU-NB-3_BM" = "#529fa6")) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+VlnBMDPDX <- VlnPlot(IntegratedObject, features = c("BMdiff"), group.by = "Cell_Line_n_Tissue", pt.size = 0, cols = c("LU-NB-1_PT" = "#295692", "LU-NB-1_BM" = "#295692", "LU-NB-2_PT" = "#d09e53", "LU-NB-2_BM" = "#d09e53", "LU-NB-3_PT" = "#529fa6", "LU-NB-3_BM" = "#529fa6")) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black")
+
+
+BMScorePDXSite <- wrap_plots(VlnBMAPDX, VlnBMBPDX, VlnBMDPDX, ncol = 3)
+
+saveplots(BMScoreSite, "../BM Publication/", "VlnPlot BMscore Site", w = 2000)
+saveplots(BMScorePDXSite, "../BM Publication/", "VlnPlot BMscore PDX Site", w = 3000)
+svg("VlnPlot BMscore Site.svg", width = 10)
 BMScoreSite
 dev.off()
-svg("VlnPlot BMscore PDX Site.svg", width = 10)
+svg("VlnPlot BMscore PDX Site.svg", width = 12)
 BMScorePDXSite
 dev.off()
 
-IntegratedObject$BMdiff <- IntegratedObject$BMAscore1 - IntegratedObject$BMBscore1
-BMdiff <- VlnPlot(IntegratedObject, features = c("BMdiff"), group.by = "Tissue", pt.size = 0, cols = Tissue_colours)
-BMAcells <- subset(IntegratedObject, Tissue == "BM" & BMdiff > -0.6)
-BMBcells <- subset(IntegratedObject, Tissue == "BM" & BMdiff < -0.6)
+ScatterplotBMscoresAll <- FeatureScatter(IntegratedObject, feature1 = "BM-Ascore1", feature2 = "BM-Bscore1", group.by = "Tissue", cols = Tissue_colours) + geom_smooth(method = 'lm') + theme(plot.title = element_text(face = "bold"), axis.title = element_text(size = 12, color = "black"), axis.text = element_text(size = 10, color = "black"))
+ScatterplotBMscores1 <- FeatureScatter(subset(IntegratedObject, Cell_Line_n == "LU-NB-1"), feature1 = "BM-Ascore1", feature2 = "BM-Bscore1", group.by = "Tissue", cols = Tissue_colours, split.by = "Cell_Line_n") + geom_smooth(method = 'lm') + theme(plot.title = element_text(face = "bold", colour = PDX_colours[1]), axis.title = element_text(size = 12, color = "black"), axis.text = element_text(size = 10, color = "black"))
+ScatterplotBMscores2 <- FeatureScatter(subset(IntegratedObject, Cell_Line_n == "LU-NB-2"), feature1 = "BM-Ascore1", feature2 = "BM-Bscore1", group.by = "Tissue", cols = Tissue_colours, split.by = "Cell_Line_n") + geom_smooth(method = 'lm') + theme(plot.title = element_text(face = "bold", colour = PDX_colours[2]), axis.title = element_text(size = 12, color = "black"), axis.text = element_text(size = 10, color = "black"))
+ScatterplotBMscores3 <- FeatureScatter(subset(IntegratedObject, Cell_Line_n == "LU-NB-3"), feature1 = "BM-Ascore1", feature2 = "BM-Bscore1", group.by = "Tissue", cols = Tissue_colours, split.by = "Cell_Line_n") + geom_smooth(method = 'lm') + theme(plot.title = element_text(face = "bold", colour = PDX_colours[3]), axis.title = element_text(size = 12, color = "black"), axis.text = element_text(size = 10, color = "black"))
+
+ScatterBMscore <- wrap_plots(ScatterplotBMscoresAll, ScatterplotBMscores1, ScatterplotBMscores2, ScatterplotBMscores3, ncol = 2)
+
+saveplots(ScatterBMscore, "../BM Publication/", "Scatterplot BM-A to BM-B score")
+svg("Scatterplot BM-A to BM-B score.svg")
+ScatterBMscore
+dev.off()
+
+BMAcells <- subset(IntegratedObject, Tissue == "BM" & `BM-Ascore1` > 0)
+BMBcells <- subset(IntegratedObject, Tissue == "BM" & `BM-Bscore1` > 0)
+VlnPlot(BMAcells, features = c("BM-Ascore1"), group.by = "Tissue")
+VlnPlot(BMBcells, features = c("BM-Ascore1"), group.by = "Tissue")
+VlnPlot(BMAcells, features = c("BM-Bscore1"), group.by = "Tissue")
+VlnPlot(BMBcells, features = c("BM-Bscore1"), group.by = "Tissue")
 VlnPlot(BMAcells, features = c("BMdiff"), group.by = "Tissue")
 VlnPlot(BMBcells, features = c("BMdiff"), group.by = "Tissue")
 BMAmean <- mean(BMAcells$BMAscore1)
 BMBmean <- mean(BMBcells$BMBscore1)
 
-saveplots(BMdiff, "../BM Publication/", "VlnPlot BM diff")
-svg("VlnPlot BM diff.svg")
-BMdiff
-dev.off()
+
 ```
 
 ```{r Finding PT cells with high BMscore}
 PTCells <- subset(IntegratedObject, Tissue == "PT")
 
-FeaturePlot(PTCells, features = "BMAscore1")
-FeaturePlot(PTCells, features = "BMBscore1")
-FeaturePlot(PTCells, features = c("BMAscore1", "BMBscore1"), blend = TRUE, combine = FALSE)
+FeaturePlot(PTCells, features = "BM-Ascore1")
+FeaturePlot(PTCells, features = "BM-Bscore1")
+FeaturePlot(PTCells, features = c("BM-Ascore1", "BM-Bscore1"), blend = TRUE, combine = FALSE)
 
-VlnPlot(PTCells, features = c("BMAscore1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
-BMScoreCluster <- VlnPlot(PTCells, features = c("BMAscore1", "BMBscore1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0)
+PTCells$seurat_clusters <- factor(PTCells$seurat_clusters, levels = 1:11)
+
+VlnBMA <- VlnPlot(PTCells, features = c("BM-Ascore1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0, sort = "increasing") + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + 
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + 
+    ggpubr::stat_compare_means(method = "anova", label.y = max(PTCells@meta.data$`BM-Ascore1`, na.rm = TRUE) * 0.95)
+VlnBMB <- VlnPlot(PTCells, features = c("BM-Bscore1"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0, sort = "increasing") + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + 
+    ggpubr::stat_compare_means(method = "anova", label.y = max(PTCells@meta.data$`BM-Bscore1`, na.rm = TRUE) * 0.95)
+VlnBMdiff <- VlnPlot(PTCells, features = c("BMdiff"), group.by = "seurat_clusters", cols = Cluster_colours, pt.size = 0, sort = "increasing") + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + 
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + 
+    ggpubr::stat_compare_means(method = "anova", label.y = max(PTCells@meta.data$BMdiff, na.rm = TRUE) * 0.95)
+
+BMScoreCluster <- wrap_plots(VlnBMA, VlnBMB, VlnBMdiff, ncol = 3)
 BMScoreCluster
 
 saveplots(BMScoreCluster, "../BM Publication/", "VlnPlot BMscore PTCluster", w = 2000)
@@ -1027,23 +1122,37 @@ svg("VlnPlot BMscore PTCluster.svg", width = 12)
 BMScoreCluster
 dev.off()
 
-PTCells$BMALike <- ifelse(PTCells$BMAscore1 > BMAmean, "BMALike", "Not BMALike")
-PTCells$BMBLike <- ifelse(PTCells$BMBscore1 > BMBmean, "BMBLike", "Not BMBLike")
+PTCells$BMALike <- ifelse(PTCells$seurat_clusters %in% c("10"), "BM-A Like", "Not BM-A Like")
+PTCells$BMBLike <- ifelse(PTCells$seurat_clusters %in% c("7"), "BM-B Like", "Not BM-B Like")
 
-Figure12 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMALike", order = c("BMALike", "Not BMALike"), cols = c("BMALike" = "red", "Not BMALike" = "lightgrey")) + ggtitle("BMA-Like PT cells")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
-Figure13 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMBLike", order = c("BMBLike", "Not BMBLike"), cols = c("BMBLike" = "red", "Not BMBLike" = "lightgrey")) + ggtitle("BMB-Like PT cells")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure12 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMALike", order = c("BM-A Like", "Not BM-A Like"), cols = c("BM-A Like" = "#FF7F7F", "Not BM-A Like" = "lightgrey")) + ggtitle("BM-A Like PT cells")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+Figure13 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMBLike", order = c("BM-B Like", "Not BM-B Like"), cols = c("BM-B Like" = "#990000", "Not BM-B Like" = "lightgrey")) + ggtitle("BM-B Like PT cells")+ theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
 
+#UMAPs seperated on PDX
+BMA1 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-1"), reduction = "umap.harmony", group.by = "BMALike", order = c("BM-A Like", "Not BM-A Like"), cols = c("BM-A Like" = "#FF7F7F", "Not BM-A Like" = "lightgrey"))+ ggtitle("BM-A Like LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2")
+BMA2 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-2"), reduction = "umap.harmony", group.by = "BMALike", order = c("BM-A Like", "Not BM-A Like"), cols = c("BM-A Like" = "#FF7F7F", "Not BM-A Like" = "lightgrey"))+ ggtitle("BM-A Like LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2])) + ylab("UMAP 2")
+BMA3 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-3"), reduction = "umap.harmony", group.by = "BMALike", order = c("BM-A Like", "Not BM-A Like"), cols = c("BM-A Like" = "#FF7F7F", "Not BM-A Like" = "lightgrey"))+ ggtitle("BM-A Like LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3])) + ylab("UMAP 2")
+BMB1 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-1"), reduction = "umap.harmony", group.by = "BMBLike", order = c("BM-B Like", "Not BM-B Like"), cols = c("BM-B Like" = "#990000", "Not BM-B Like" = "lightgrey"))+ ggtitle("BM-B Like LU-NB-1") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[1])) + ylab("UMAP 2")
+BMB2 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-2"), reduction = "umap.harmony", group.by = "BMBLike", order = c("BM-B Like", "Not BM-B Like"), cols = c("BM-B Like" = "#990000", "Not BM-B Like" = "lightgrey"))+ ggtitle("BM-B Like LU-NB-2") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[2])) + ylab("UMAP 2")
+BMB3 <- DimPlot(PTCells, cells = WhichCells(PTCells, expression = Cell_Line_n == "LU-NB-3"), reduction = "umap.harmony", group.by = "BMBLike", order = c("BM-B Like", "Not BM-B Like"), cols = c("BM-B Like" = "#990000", "Not BM-B Like" = "lightgrey"))+ ggtitle("BM-B Like LU-NB-3") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), legend.position = "none", plot.title = element_text(colour = PDX_colours[3])) + ylab("UMAP 2")
+UMAPBMLikeSplit <- wrap_plots(Figure12, BMA1, BMA2, BMA3, Figure13, BMB1, BMB2, BMB3, ncol = 4)
+
+saveplots(UMAPBMLikeSplit, "../BM Publication/", "UMAP BM Like split", w = 1300)
+svg("UMAP BM Like split.svg", width = 10)
+UMAPBMLikeSplit
+dev.off()
+UMAPBMLikeSplit
 
 #Barplot with % BMALike per Cell line
 CellLine <- c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra")
 Signature <- c(rep(c("BM"), 3), "Extra")
-Percentage <- c(c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.05))
+Percentage <- c(c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.05))
 
 barplotData1 <- data.frame(CellLine, Signature, Percentage)
 
 Figure14 <- ggplot(barplotData1, aes(fill=Signature, y=Percentage, x=CellLine)) + 
   geom_col() + 
-  ggtitle("Percentage cells with BMA profile") +
+  ggtitle("Percentage cells with BM-A profile") +
   scale_fill_manual(values = c("BM" = "#E6550D", "Extra" = "white")) +
   scale_y_continuous(breaks = seq(0, 0.10, by = 0.01), labels = scales::label_percent(), expand = c(0, 0)) +
   scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3", "")) +
@@ -1069,13 +1178,13 @@ Figure14
 #Barplot with % BMBLike per Cell line
 CellLine <- c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra")
 Signature <- c(rep(c("BM"), 3), "Extra")
-Percentage <- c(c(length(WhichCells(PTCells, expression = BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.3))
+Percentage <- c(c(length(WhichCells(PTCells, expression = BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(0.3))
 
 barplotData2 <- data.frame(CellLine, Signature, Percentage)
 
 Figure15 <- ggplot(barplotData2, aes(fill=Signature, y=Percentage, x=CellLine)) + 
   geom_col() + 
-  ggtitle("Percentage cells with BMB profile") +
+  ggtitle("Percentage cells with BM-B profile") +
   scale_fill_manual(values = c("BM" = "#E6550D", "Extra" = "white")) +
   scale_y_continuous(breaks = seq(0, 0.40, by = 0.05), labels = scales::label_percent(), expand = c(0, 0)) +
   scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT", "Extra"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3", "")) +
@@ -1098,15 +1207,15 @@ Figure15 <- ggplot(barplotData2, aes(fill=Signature, y=Percentage, x=CellLine)) 
 )
 
 CellLine <- c(rep(c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT"), each = 3))
-Signature <- c(rep(c("BMALike", "Both", "BMBLike"), times = 3))
-Percentage <- c(c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "Not BMBLike" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "Not BMBLike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "Not BMBLike" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(PTCells, expression = BMALike == "BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BMALike" & BMBLike == "BMBLike" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))))
+Signature <- c(rep(c("BM-A Like", "Both", "BM-B Like"), times = 3))
+Percentage <- c(c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "Not BM-B Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "Not BMBLike" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "Not BM-B Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(PTCells, expression = BMALike == "BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(PTCells, expression = BMALike == "Not BM-A Like" & BMBLike == "BM-B Like" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(PTCells, Cell_Line_n == "LU-NB-3")))))
 
 barplotData3 <- data.frame(CellLine, Signature, Percentage)
-ggplot(barplotData3, aes(fill=factor(Signature, levels = c("BMBLike", "Both", "BMALike")), y=Percentage, x=CellLine)) + 
+ggplot(barplotData3, aes(fill=factor(Signature, levels = c("BM-B Like", "Both", "BM-A Like")), y=Percentage, x=CellLine)) + 
   geom_bar(position = "stack", stat = "identity", width = 0.8) + 
   geom_col() + 
   ggtitle("Percentage cells with BM profile") +
-  scale_fill_manual(values = c("Both" = "#FF0000", "BMALike" = "#FF7F7F", "BMBLike" = "#990000")) +
+  scale_fill_manual(values = c("Both" = "#FF0000", "BM-A Like" = "#FF7F7F", "BM-B Like" = "#990000")) +
   scale_y_continuous(breaks = seq(0, 0.30, by = 0.05), labels = scales::label_percent(), expand = c(0, 0)) +
   scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3")) +
   theme_minimal() +
@@ -1129,8 +1238,8 @@ ggplot(barplotData3, aes(fill=factor(Signature, levels = c("BMBLike", "Both", "B
 
 Figure18 <- ggplot(barplotData3, aes(fill=Signature, y=Percentage, x=CellLine, size=8)) + 
   geom_bar(position = "dodge", stat = "identity", width = 0.9) + 
-  ggtitle("Percentage of BMA/BMB Like PT Cells") +
-  scale_fill_manual(values = c("Both" = "#FF0000", "BMALike" = "#FF7F7F", "BMBLike" = "#990000")) +
+  ggtitle("Percentage of BM-A/BM-B Like PT Cells") +
+  scale_fill_manual(values = c("Both" = "#FF0000", "BM-A Like" = "#FF7F7F", "BM-B Like" = "#990000")) +
   scale_x_discrete(limits = c("LU-NB-1_PT", "LU-NB-2_PT", "LU-NB-3_PT"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3")) +
   scale_y_continuous(breaks = seq(0, 0.30, by = 0.05), labels = scales::label_percent(), expand = expansion(0, c(0, 0.05))) +
   geom_text(aes(label = 100*round(Percentage, 4)), 
@@ -1152,22 +1261,19 @@ Figure18
 
 ```{r Connection between BMA/BMB och ADRN/MES}
 onlyBM <- subset(IntegratedObject, Tissue == "BM")
-onlyBM$type <- ifelse(onlyBM$BMdiff > -0.6, "BMA-Like", "BMB-Like")
+onlyBM$type <- ifelse(onlyBM$`BM-Ascore1` > BMAmean & onlyBM$`BM-Bscore1` > BMBmean, "Both", ifelse(onlyBM$`BM-Ascore1` > BMAmean, "BM-A", ifelse(onlyBM$`BM-Bscore1` > BMBmean, "BM-B", "Other")))
 
-VlnPlot(onlyBM, features = c("BMAscore1", "BMBscore1"), group.by = "type", pt.size = 0, cols = c("BMA-Like" = "#FF7F7F", "BMB-Like" = "#990000"))
-VlnPlot(onlyBM, features = c("ADRN_Score1", "MES_Score1"), group.by = "type", pt.size = 0, cols = c("BMA-Like" = "#FF7F7F", "BMB-Like" = "#990000"))
+VlnPlot(onlyBM, features = c("BM-Ascore1", "BM-Bscore1", "BMdiff"), group.by = "type", pt.size = 0, cols = c("BM-A" = "#FF7F7F", "BM-B" = "#990000"))
+VlnPlot(onlyBM, features = c("ADRN_Score1", "MES_Score1"), group.by = "type", pt.size = 0, cols = c("BM-A" = "#FF7F7F", "BM-B" = "#990000"))
 
-FeatureScatter(onlyBM, feature1 = "BMAscore1", feature2 = "ADRN_Score1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
-FeatureScatter(onlyBM, feature1 = "BMBscore1", feature2 = "MES_Score1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
-FeatureScatter(onlyBM, feature1 = "BMBscore1", feature2 = "ADRN_Score1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
-FeatureScatter(onlyBM, feature1 = "BMAscore1", feature2 = "MES_Score1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
-FeatureScatter(onlyBM, feature1 = "BMAscore1", feature2 = "BMBscore1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
-FeatureScatter(onlyBM, feature1 = "ADRN_Score1", feature2 = "MES_Score1", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
+AdrnMesBMtype <- VlnPlot(onlyBM, features = c("ADRNMESdiff"), group.by = "type", pt.size = 0, cols = c("BM-A Like" = "#FF7F7F", "BM-B Like" = "#990000"))+ geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + ggpubr::stat_compare_means(method = "anova", label.y = max(onlyBM@meta.data$ADRNMESdiff, na.rm = TRUE) * 0.95)
 
-onlyBM$AdrnMesDiff <- onlyBM$ADRN_Score1 - onlyBM$MES_Score1
-AdrnMesBMtype <- VlnPlot(onlyBM, features = c("AdrnMesDiff"), group.by = "type", pt.size = 0, cols = c("BMA-Like" = "#FF7F7F", "BMB-Like" = "#990000"))
 
-ScatterStateBMtype <- FeatureScatter(onlyBM, feature1 = "AdrnMesDiff", feature2 = "BMdiff", group.by = "Cell_Line_n", split.by = "Cell_Line_n", cols = c(PDX_colours))
+ScatterStateBMtype1 <- FeatureScatter(onlyBM, cells = WhichCells(onlyBM, expression = Cell_Line_n == "LU-NB-1"), feature1 = "ADRNMESdiff", feature2 = "BMdiff", group.by = "Cell_Line_n", cols = c(PDX_colours)) + ggtitle("LU-NB-1: -0.24") + geom_smooth(method = 'lm') + NoLegend() + theme(axis.line = element_line(color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), plot.title = element_text(colour = PDX_colours[1])) + ylab("BM-A - BM-B") + xlab("Mes - Adrn") 
+ScatterStateBMtype2 <- FeatureScatter(onlyBM, cells = WhichCells(onlyBM, expression = Cell_Line_n == "LU-NB-2"), feature1 = "ADRNMESdiff", feature2 = "BMdiff", group.by = "Cell_Line_n", cols = c(PDX_colours)) + ggtitle("LU-NB-2: 0.07") + geom_smooth(method = 'lm') + NoLegend() +  theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), plot.title = element_text(colour = PDX_colours[2])) + xlab("Mes - Adrn")
+ScatterStateBMtype3 <- FeatureScatter(onlyBM, cells = WhichCells(onlyBM, expression = Cell_Line_n == "LU-NB-3"), feature1 = "ADRNMESdiff", feature2 = "BMdiff", group.by = "Cell_Line_n", cols = c(PDX_colours)) + ggtitle("LU-NB-3: -0.14") + geom_smooth(method = 'lm') + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1), plot.title = element_text(colour = PDX_colours[3])) + xlab("Mes - Adrn")
+ScatterStateBMtype <- wrap_plots(ScatterStateBMtype1, ScatterStateBMtype2, ScatterStateBMtype3, ncol = 3)
+
 
 saveplots(ScatterStateBMtype, "../BM Publication/", "Scatterplot BMdiff vs AdrnMesDiff", w = 2000)
 svg("Scatterplot BMdiff vs AdrnMesDiff.svg", width = 12, height = 6)
@@ -1177,6 +1283,70 @@ saveplots(AdrnMesBMtype, "../BM Publication/", "VlnPlot AdrnMesDiff in BMtype", 
 svg("VlnPlot AdrnMesDiff in BMtype.svg")
 AdrnMesBMtype
 dev.off()
+```
+
+```{r BMA and BMB comparison}
+#Barplot of BMA/B cells in BM per PDX
+CellLine <- c(rep(c("LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"), each = 3))
+Signature <- c(rep(c("BM-A Cells", "Both", "BM-B Cells"), times = 3))
+Percentage <- c(c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(onlyBM, expression = type == "Both" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(onlyBM, expression = type == "Both" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(onlyBM, expression = type == "Both" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-3")))))
+
+barplotData4 <- data.frame(CellLine, Signature, Percentage)
+BarplotBM <- ggplot(barplotData4, aes(fill=Signature, y=Percentage, x=CellLine, size=8)) + 
+  geom_bar(position = "dodge", stat = "identity", width = 0.9) + 
+  ggtitle("Percentage of BM-A/BM-B Cells") +
+  scale_fill_manual(values = c("Both" = "#FF0000", "BM-A Cells" = "#FF7F7F", "BM-B Cells" = "#990000")) +
+  scale_x_discrete(limits = c("LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3")) +
+  scale_y_continuous(breaks = seq(0, 0.50, by = 0.1), labels = scales::label_percent(), expand = expansion(0, c(0, 0.05))) +
+  geom_text(aes(label = 100*round(Percentage, 4)), 
+            position = position_dodge(width = 0.8), vjust = -0.8, color =  "black", size = 3) +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_text(angle = 0, hjust = 0.5, size = 15, colour = c(PDX_colours[1], PDX_colours[2], PDX_colours[3])),
+  axis.text.y = element_text(size = 10),
+  text = element_text(size = 12, color = "black")
+)
+
+#Saving plot
+saveplots(BarplotBM, "../BM Publication/", "Barplot BM type in BM")
+svg("Barplot BM type in BM.svg")
+BarplotBM
+dev.off()
+BarplotBM
+
+```
+
+```{r New umap with only BM cells}
+#Reprocessing
+DefaultAssay(onlyBM) <- "RNA"
+onlyBM[["SCT"]] <- NULL 
+onlyBM <- JoinLayers(onlyBM)
+onlyBM[["RNA"]] <- split(onlyBM[["RNA"]], f = onlyBM$orig.ident)
+onlyBM <- SCTransform(onlyBM, vars.to.regress = c("nFeature_RNA", 'nCount_RNA', "percent_mito", "cc_difference", "percent_ribo"), return.only.var.genes = FALSE, verbose = TRUE)
+DefaultAssay(onlyBM) <- "SCT"
+onlyBM <- RunPCA(onlyBM, seed.use = 1999,verbose = FALSE)
+ElbowPlot(onlyBM, ndims = 50)
+onlyBM <- IntegrateLayers(object = onlyBM, method = HarmonyIntegration, orig.reduction = "pca", dims = 1:30, new.reduction = "integrated.harmony", normalization.method = "SCT", k.weight = 50, verbose = FALSE)
+onlyBM <- RunUMAP(onlyBM, reduction = "integrated.harmony", reduction.name = "umap.harmony", dims = 1:30, verbose = FALSE,seed.use = 1999)
+
+#Plotting
+UMAPBM <- DimPlot(onlyBM, reduction = "umap.harmony", group.by = "Cell_Line_n", cols = c(PDX_colours), pt.size = 0.8) + ggtitle("UMAP of BM cells") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+DimPlot(onlyBM, reduction = "umap.harmony", group.by = "type", cols = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Both" = "#FF0000", "Other" = "lightgrey"), pt.size = 0.8) + ggtitle("UMAP of BM cells") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+DimPlot(onlyBM, reduction = "umap.harmony", group.by = "type", cols = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Both" = "#FF0000", "Other" = "lightgrey"), pt.size = 0.8) + ggtitle("UMAP of BM cells") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+
+saveplots(UMAPBM, "../BM Publication/", "UMAP BM by PDX", w = 1050)
+svg("UMAP BM by PDX.svg")
+UMAPBM
+dev.off()
+BarplotBM
+
+#Combining features
+FeaturePlot(onlyBM, features = c("BM-Ascore1", "BM-Bscore1"), reduction = "umap.harmony", order = TRUE, combine = FALSE, blend = TRUE)
+FeaturePlot(onlyBM, features = c("ADRN_Score1", "MES_Score1"), reduction = "umap.harmony", blend = TRUE, combine = FALSE)
+
+FeaturePlot(onlyBM, features = c("BM-Ascore1"), reduction = "umap.harmony", cols = c("lightgrey", "red")) + ggtitle("BM-A score") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+FeaturePlot(onlyBM, features = c("BM-Bscore1"), reduction = "umap.harmony", cols = c("lightgrey", "red")) + ggtitle("BM-B score") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+FeaturePlot(onlyBM, features = c("BMdiff"), reduction = "umap.harmony", cols = c("yellow", "#800080")) + ggtitle("BM-A - BM-B") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
 ```
 
 
@@ -1229,8 +1399,8 @@ saveplots(Figure7, "../BM Publication/", "Barplot Clusters in Site")
 svg("Barplot Clusters in Site.svg")
 Figure7
 dev.off()
-saveplots(Figure8, "../BM Publication/", "Dotplot DEG", w = 3000)
-svg("Dotplot DEG.svg", width = 20)
+saveplots(Figure8, "../BM Publication/", "Dotplot DEG", w = 1000)
+svg("Dotplot DEG.svg")
 Figure8
 dev.off()
 
@@ -1257,3 +1427,163 @@ svg("Barplot all BMLike PT Cells in PDX.svg")
 Figure18
 dev.off()
 ```
+
+```{r Clustering BM cells}
+resList <- list()
+for (res in seq(0.01, 1.0, by = 0.01)) {
+  #Find neighbors and clusters
+  onlyBM <- FindNeighbors(onlyBM, reduction = "integrated.harmony", dims = 1:30)
+  onlyBM <- FindClusters(onlyBM, resolution = res)
+  
+  #Count number of clusters
+  clustnbr <- length(unique(onlyBM$seurat_clusters))
+  
+  #Add number of clusters to list
+  resList[[as.character(res)]] <- clustnbr
+}
+
+#Ggplot of changes in cluster number with different resolutions
+resDF <- data.frame(Resolution = as.numeric(names(resList)), ClusterNumber = unlist(resList))
+ggplot(resDF, aes(x = Resolution, y = ClusterNumber)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("Number of Clusters at Different Resolutions") +
+  xlab("Resolution") +
+  ylab("Number of Clusters") +
+  theme_minimal()
+
+#13 cluster at res 0.15 seem to be a good choice
+onlyBM <- FindNeighbors(onlyBM, reduction = "integrated.harmony", dims = 1:30)
+onlyBM <- FindClusters(onlyBM, resolution = 0.30)
+
+#Planar ut vid 2, 5, 9, 14 kluster. 9 Känns rimlig, res = 30.
+
+#Setting cluster names 1-13
+new.cluster.ids <- c(1:13) 
+names(new.cluster.ids) <- levels(onlyBM)
+onlyBM <- RenameIdents(onlyBM, new.cluster.ids)
+onlyBM$seurat_clusters <- Idents(onlyBM)
+
+UMAPBMClust <- DimPlot(onlyBM, reduction = "umap.harmony", group.by = "seurat_clusters", cols = Cluster_colours)
+DimPlot(onlyBM, reduction = "umap.harmony", group.by = "seurat_clusters", split.by = "Cell_Line_n")
+
+saveplots(UMAPBMClust, "../BM Publication/", "UMAP BM by cluster", w = 1050)
+svg("UMAP BM by cluster.svg")
+UMAPBMClust
+dev.off()
+UMAPBMClust
+
+VlnBMBMA <- VlnPlot(onlyBM, features = c("BM-Ascore1"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing", cols = Cluster_colours) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) +
+stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + 
+ggpubr::stat_compare_means(method = "anova", label.y = max(onlyBM@meta.data$`BM-Ascore1`, na.rm = TRUE) * 0.95)
+VlnBMBMB <- VlnPlot(onlyBM, features = c("BM-Bscore1"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing", cols = Cluster_colours) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + 
+ggpubr::stat_compare_means(method = "anova", label.y = max(onlyBM@meta.data$`BM-Bscore1`, na.rm = TRUE) * 0.95)
+VlnBMBMdiff <- VlnPlot(onlyBM, features = c("BMdiff"), group.by = "seurat_clusters", pt.size = 0, sort = "increasing", cols = Cluster_colours) + geom_boxplot(fill = "white", alpha = 0.5, width = 0.5,outliers = F) + stat_summary(fun = mean, geom = "point", shape = 23, size = 2, fill = "white", color = "black") + ggpubr::stat_compare_means(method = "anova", label.y = max(onlyBM@meta.data$BMdiff, na.rm = TRUE) * 0.95)
+
+VlnBM <- wrap_plots(VlnBMBMA, VlnBMBMB, VlnBMBMdiff, ncol = 3)
+
+saveplots(VlnBM, "../BM Publication/", "Vlnplot BM scores by cluster")
+svg("Vlnplot BM scores by cluster.svg")
+VlnBM
+dev.off()
+VlnBM
+
+#Adding BM-A/B identity to BM cells from cluster belonging
+onlyBM$type <- ifelse(onlyBM$seurat_clusters == 1, "BM-A", ifelse(onlyBM$seurat_clusters %in% c(6, 8), "BM-B", "Other"))
+
+#Plotting BM-A/B scores in BM cells (Dimplot and Barplot)
+UMAPBMtype <- DimPlot(onlyBM, reduction = "umap.harmony", group.by = "type", cols = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Other" = "lightgrey"), pt.size = 0.8) + ggtitle("UMAP of BM cells") + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
+
+saveplots(UMAPBMtype, "../BM Publication/", "UMAP BM by BM-A BM-B", w = 1050)
+svg("UMAP BM by BM-A BM-B.svg")
+UMAPBMtype
+dev.off()
+UMAPBMtype
+
+cellLine <- c(rep(c("LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"), each = 2))
+type <- c(rep(c("BM-A", "BM-B"), times = 3))
+percentage <- c(c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-1"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-1")))), c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-2"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-2")))), c(length(WhichCells(onlyBM, expression = type == "BM-A" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-3")))), c(length(WhichCells(onlyBM, expression = type == "BM-B" & Cell_Line_n == "LU-NB-3"))/length(colnames(subset(onlyBM, Cell_Line_n == "LU-NB-3")))))
+barplotData5 <- data.frame(cellLine, type, percentage)
+BarplotBM2 <- ggplot(barplotData5, aes(fill=type, y=percentage, x=cellLine, size=8)) + 
+  geom_bar(position = "dodge", stat = "identity", width = 0.9) + 
+  ggtitle("Percentage of BM-A/BM-B Cells") +
+  scale_fill_manual(values = c("BM-A" = "#FF7F7F", "BM-B" = "#990000")) +
+  scale_x_discrete(limits = c("LU-NB-1_BM", "LU-NB-2_BM", "LU-NB-3_BM"), labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3")) +
+  scale_y_continuous(breaks = seq(0, 0.50, by = 0.1), labels = scales::label_percent(), expand = expansion(0, c(0, 0.05))) +
+  geom_text(aes(label = 100*round(percentage, 4)), 
+            position = position_dodge(width = 0.8), vjust = -0.8, color =  "black", size = 3) +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_text(size = 15, hjust = 0.5, colour = c(PDX_colours[1], PDX_colours[2], PDX_colours[3])),
+  axis.text.y = element_text(size = 10),
+  text = element_text(size = 12, color = "black"))
+
+BarplotBM2
+
+saveplots(BarplotBM2, "../BM Publication/", "Barplot BM type in BM by cluster")
+svg("Barplot BM type in BM by cluster.svg")
+BarplotBM2
+dev.off()
+
+```
+
+```{r MAST Between BM-A Like/BM-B Like PT cells (BM-A Like to non, BM-B like to none)}
+#Preparing MAST
+
+#Running MAST
+
+#VolcPlot of results
+
+#Cutoff for selecting DEG
+
+#Comparing to PT-BM DEG
+
+#Dotplot of results
+
+#Heatmap of results
+```
+
+```{r gsea from results PT}
+#gseaKEGG
+
+#gseaGO
+
+#Plotting Kegg
+
+#Plotting GO
+```
+
+```{r MAST Between BM-A/BM-B BM cells (BM-A to BM-B)}
+#Preparing MAST
+
+#Running MAST
+
+#VolcPlot of results
+
+#Cutoff for selecting DEG
+
+#Comparing to PT-BM DEG
+
+#Dotplot of results
+
+#Heatmap of results
+```
+
+```{r gsea from results BM}
+#gseaKEGG
+
+#gseaGO
+
+#Plotting Kegg
+
+#Plotting GO
+```
+
+```{Monocle in all cells (PT as startpoint and BM as endpoint)}
+
+```
+
+```{Monocle in only BM cells (BM-A and BM-B as startpoints)}
+
+```
+
