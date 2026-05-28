@@ -1568,22 +1568,51 @@ dev.off()
 
 ```
 
+```{r short preparation for MAST}
+onlyBMAB <- subset(onlyBM, type %in% c("BM-A", "BM-B"))
+
+#Factoring grouping factors and removing empty levels
+PTCells@meta.data <- droplevels(PTCells@meta.data)
+PTCells$Cell_Line_n <- as.factor(PTCells$Cell_Line_n)
+PTCells$Mouse_n <- as.factor(PTCells$Mouse_n)
+onlyBM@meta.data <- droplevels(onlyBM@meta.data)
+onlyBM$Cell_Line_n <- as.factor(onlyBM$Cell_Line_n)
+onlyBM$Mouse_n <- as.factor(onlyBM$Mouse_n)
+onlyBMAB@meta.data <- droplevels(onlyBMAB@meta.data)
+onlyBMAB$Cell_Line_n <- as.factor(onlyBMAB$Cell_Line_n)
+onlyBMAB$Mouse_n <- as.factor(onlyBMAB$Mouse_n)
+
+PTCells$A_vs_rest <- ifelse(PTCells$BMLike == "BM-A Like", "BM-A Like", "Rest")
+PTCells$B_vs_rest <- ifelse(PTCells$BMLike == "BM-B Like", "BM-B Like", "Rest")
+PTCells$A_vs_rest <- as.factor(PTCells$A_vs_rest)
+PTCells$B_vs_rest <- as.factor(PTCells$B_vs_rest)
+
+onlyBM$A_vs_rest <- ifelse(onlyBM$type == "BM-A", "BM-A", "Rest")
+onlyBM$B_vs_rest <- ifelse(onlyBM$type == "BM-B", "BM-B", "Rest")
+onlyBM$Other_vs_AB <- ifelse(onlyBM$type == "Other", "Other", "BM-AB")
+onlyBM$A_vs_rest <- as.factor(onlyBM$A_vs_rest)
+onlyBM$B_vs_rest <- as.factor(onlyBM$B_vs_rest)
+onlyBM$Other_vs_AB <- as.factor(onlyBM$Other_vs_AB)
+
+onlyBMAB$A_vs_B <- ifelse(onlyBMAB$type == "BM-A", "BM-A", "BM-B")
+onlyBMAB$A_vs_B <- as.factor(onlyBMAB$A_vs_B)
+
+```
+
+
 ```{r MAST Between BM-A Like/BM-B Like PT cells (BM-A Like to non, BM-B like to none)}
-  Idents(PTCells) <- "BMLike"
+  Idents(PTCells) <- "A_vs_rest"
 # View percentage of cells expressing Genes
   PctExpressing_BMALike <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "BM-A Like"),assay = "RNA",slot = "counts") != 0) ) %>% 
-    tibble::rownames_to_column(var = "Gene") %>% mutate(BMLike = "BM-A Like")
-  PctExpressing_BMBLike <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "BM-B Like"),assay = "RNA",slot = "counts") != 0) ) %>% 
-    tibble::rownames_to_column(var = "Gene") %>% mutate(BMLike = "BM-B Like")
-    PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "Other"),assay = "RNA",slot = "counts") != 0) ) %>% 
-    tibble::rownames_to_column(var = "Gene") %>% mutate(BMLike = "Other")
+    tibble::rownames_to_column(var = "Gene") %>% mutate(A_vs_rest = "BM-A Like")
+  PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "Rest"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(A_vs_rest = "Rest")
 # Rename columns
-  colnames(PctExpressing_BMALike) <- c("Gene","Percentage_Expressing","BMLike")
-  colnames(PctExpressing_BMBLike) <- c("Gene","Percentage_Expressing","BMLike")
-  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","BMLike")
+  colnames(PctExpressing_BMALike) <- c("Gene","Percentage_Expressing","A_vs_rest")
+  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","A_vs_rest")
 
 # Bind
-  PctExpressing <- rbind(PctExpressing_BMALike,PctExpressing_BMBLike, PctExpressing_BMOther) %>% arrange(Gene)
+  PctExpressing <- rbind(PctExpressing_BMALike, PctExpressing_BMOther) %>% arrange(Gene)
 
 # Create gene selection vector
   passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
@@ -1610,16 +1639,17 @@ dev.off()
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
 #Running MAST
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + BMLike + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
                                   sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+#Changing and removing Cell_Line_n/Mouse_n due to errors ( Error : grouping factors must have > 1 sampled level and fixed-effect model matrix is rank deficient so dropping 1 column / coefficient). As Cell_Line_n only has 1 mouse after subsetting to PT only. And I think because type/BMLike was very correlated to Cell_Line_n
 
 #Processing
-  random_zlm_summaryA <- MAST::summary(random_zlm_fit, doLRT = "BMLikeBM-A Like")
+  random_zlm_summaryA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restBM-A Like")
   random_summary_dataA <- random_zlm_summaryA$datatable
 # Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataA <- random_summary_dataA[random_summary_dataA$contrast == "BMLikeBM-A Like" & random_summary_dataA$component == "logFC", 
+  random_logFC_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restBM-A Like" & random_summary_dataA$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataA <- random_summary_dataA[random_summary_dataA$contrast == "BMLikeBM-A Like" & random_summary_dataA$component == "H", 
+  random_hurdle_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restBM-A Like" & random_summary_dataA$component == "H", 
                                   c(1,4)]
 # Merge logFC and Hurdle results
   mast_random_hurdle_resultsA <- merge(random_logFC_dataA, random_hurdle_dataA, by = "primerid")
@@ -1631,13 +1661,44 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + BMLike + nFeature_RNA + (1 | Cell_Li
     arrange(desc(coef))
   
 saveRDS(mast_analysis_resultsA, "../BM Publication/MAST_BMALikevsOther.rds")
+```
 
+```{r MAST BM-B like against rest}
 #Same for BM-B Like vs Other
-  random_zlm_summaryB <- MAST::summary(random_zlm_fit, doLRT = "BMLikeBM-B Like")
+  Idents(PTCells) <- "B_vs_rest"
+  PctExpressing_BMBLike <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "BM-B Like"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(B_vs_rest = "BM-B Like")
+  PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = PTCells, idents = "Rest"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(B_vs_rest = "Rest")
+  colnames(PctExpressing_BMBLike) <- c("Gene","Percentage_Expressing","B_vs_rest")
+  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","B_vs_rest")
+  PctExpressing <- rbind(PctExpressing_BMBLike, PctExpressing_BMOther) %>% arrange(Gene)
+  passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
+  Percent_gene_selection_vector <- rownames(PTCells) %in% passing_genes
+  names(Percent_gene_selection_vector) <- rownames(PTCells) 
+  Integrated_logTPM <- GetAssayData(PTCells, assay = "RNA", layer = "data") 
+  Integrated_logTPM_Subset <- Integrated_logTPM[Percent_gene_selection_vector,]
+  gene_metadata <- data.frame(primerid  = rownames(Integrated_logTPM_Subset))
+  cell_metadata <- PTCells@meta.data
+  cell_metadata$wellKey <- rownames(cell_metadata)
+
+  sca_object <- MAST::FromMatrix(
+      exprsArray = as.matrix(Integrated_logTPM_Subset),  
+      cData = cell_metadata, 
+      fData = gene_metadata,
+      check_sanity = TRUE 
+  )
+  
+  rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
+  
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+
+  random_zlm_summaryB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restBM-B Like")
   random_summary_dataB <- random_zlm_summaryB$datatable
-  random_logFC_dataB <- random_summary_dataB[random_summary_dataB$contrast == "BMLikeBM-B Like" & random_summary_dataB$component == "logFC", 
+  random_logFC_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restBM-B Like" & random_summary_dataB$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataB <- random_summary_dataB[random_summary_dataB$contrast == "BMLikeBM-B Like" & random_summary_dataB$component == "H", 
+  random_hurdle_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restBM-B Like" & random_summary_dataB$component == "H", 
                                   c(1,4)]
   mast_random_hurdle_resultsB <- merge(random_logFC_dataB, random_hurdle_dataB, by = "primerid")
   mast_analysis_resultsB <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsB))
@@ -1974,121 +2035,182 @@ dev.off()
 
 
 ```{r MAST Between BM-A/BM-B BM cells (BM-A to BM-B), BM-A to all other, BM-B to all other and finaly other to BM-A and BM-B}
-#Preparing MAST
-  Idents(onlyBM) <- "type"
-# View percentage of cells expressing Genes
-  PctExpressing_BMA <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "BM-A"),assay = "RNA",slot = "counts") != 0) ) %>% 
+#MAST BM-A to BM-B
+  Idents(onlyBMAB) <- "A_vs_B"
+  PctExpressing_BMA <- data.frame(rowMeans(GetAssayData(subset(x = onlyBMAB, idents = "BM-A"),assay = "RNA",slot = "counts") != 0) ) %>% 
     tibble::rownames_to_column(var = "Gene") %>% mutate(type = "BM-A")
-  PctExpressing_BMB <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "BM-B"),assay = "RNA",slot = "counts") != 0) ) %>% 
+  PctExpressing_BMB <- data.frame(rowMeans(GetAssayData(subset(x = onlyBMAB, idents = "BM-B"),assay = "RNA",slot = "counts") != 0) ) %>% 
     tibble::rownames_to_column(var = "Gene") %>% mutate(type = "BM-B")
-    PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "Other"),assay = "RNA",slot = "counts") != 0) ) %>% 
-    tibble::rownames_to_column(var = "Gene") %>% mutate(type = "Other")
-# Rename columns
-  colnames(PctExpressing_BMA) <- c("Gene","Percentage_Expressing","type")
-  colnames(PctExpressing_BMB) <- c("Gene","Percentage_Expressing","type")
-  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","type")
+  colnames(PctExpressing_BMA) <- c("Gene","Percentage_Expressing","A_vs_B")
+  colnames(PctExpressing_BMB) <- c("Gene","Percentage_Expressing","A_vs_B")
+  PctExpressing <- rbind(PctExpressing_BMA,PctExpressing_BMB) %>% arrange(Gene)
+  passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
+  Percent_gene_selection_vector <- rownames(onlyBMAB) %in% passing_genes
+  names(Percent_gene_selection_vector) <- rownames(onlyBMAB) 
+  Integrated_logTPM <- GetAssayData(onlyBMAB, assay = "RNA", layer = "data") 
+  Integrated_logTPM_Subset <- Integrated_logTPM[Percent_gene_selection_vector,]
+  gene_metadata <- data.frame(primerid  = rownames(Integrated_logTPM_Subset))
+  cell_metadata <- onlyBMAB@meta.data
+  cell_metadata$wellKey <- rownames(cell_metadata)
 
-# Bind
-  PctExpressing <- rbind(PctExpressing_BMA,PctExpressing_BMB, PctExpressing_BMOther) %>% arrange(Gene)
+    sca_object <- MAST::FromMatrix(
+      exprsArray = as.matrix(Integrated_logTPM_Subset),  
+      cData = cell_metadata, 
+      fData = gene_metadata,
+      check_sanity = TRUE 
+  )
 
-# Create gene selection vector
+  rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
+
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_B + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+
+  random_zlm_summaryBM <- MAST::summary(random_zlm_fit, doLRT = "A_vs_BBM-A")
+  random_summary_dataBM <- random_zlm_summaryBM$datatable
+  random_logFC_dataBM <- random_summary_dataBM[random_summary_dataBM$contrast == "A_vs_BBM-A" & random_summary_dataBM$component == "logFC", 
+                                 c(1,7,5,6,8)]
+  random_hurdle_dataBM <- random_summary_dataBM[random_summary_dataBM$contrast == "A_vs_BBM-A" & random_summary_dataBM$component == "H", 
+                                  c(1,4)]
+  mast_random_hurdle_resultsBM <- merge(random_logFC_dataBM, random_hurdle_dataBM, by = "primerid")
+  mast_random_analysis_resultsBM <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBM))
+  mast_random_analysis_resultsBM <- mast_random_analysis_resultsBM %>% 
+    mutate(qvalue = qvalue(mast_random_analysis_resultsBM$`Pr(>Chisq)`)$qvalues) %>% 
+    arrange(desc(coef))
+  
+saveRDS(mast_random_analysis_resultsBM, "../BM Publication/MAST_BMAvsBMB.rds")
+```
+
+```{r MAST BM-A to all other}
+#Same for BM-B Like vs Other
+  Idents(onlyBM) <- "A_vs_rest"
+  PctExpressing_BMA <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "BM-A"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(A_vs_rest = "BM-A")
+  PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "Rest"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(A_vs_rest = "Rest")
+  colnames(PctExpressing_BMA) <- c("Gene","Percentage_Expressing","A_vs_rest")
+  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","A_vs_rest")
+  PctExpressing <- rbind(PctExpressing_BMA, PctExpressing_BMOther) %>% arrange(Gene)
   passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
   Percent_gene_selection_vector <- rownames(onlyBM) %in% passing_genes
   names(Percent_gene_selection_vector) <- rownames(onlyBM) 
-
-#Preparing MAST
   Integrated_logTPM <- GetAssayData(onlyBM, assay = "RNA", layer = "data") 
   Integrated_logTPM_Subset <- Integrated_logTPM[Percent_gene_selection_vector,]
-# Create the feature data (gene information)
   gene_metadata <- data.frame(primerid  = rownames(Integrated_logTPM_Subset))
-# Extract cell metadata from the Seurat object
   cell_metadata <- onlyBM@meta.data
-# Add a unique identifier column for each cell (well key)
   cell_metadata$wellKey <- rownames(cell_metadata)
-# Create a SingleCellAssay object using MAST::FromMatrix
+
   sca_object <- MAST::FromMatrix(
       exprsArray = as.matrix(Integrated_logTPM_Subset),  
       cData = cell_metadata, 
       fData = gene_metadata,
       check_sanity = TRUE 
   )
-# Remove unnecessary R objects
+  
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
-
-#Running MAST
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + type + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+  
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
                                   sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
 
-#Processing BM-A to BM-B
-  random_zlm_summaryBM <- MAST::summary(random_zlm_fit, doLRT = "typeBM-A", contrast = "typeBM-B")
-  random_summary_dataBM <- random_zlm_summaryBM$datatable
-# Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataBM <- random_summary_dataBM[random_summary_dataBM$contrast == "typeBM-A" & random_summary_dataBM$component == "logFC", 
-                                 c(1,7,5,6,8)]
-  random_hurdle_dataBM <- random_summary_dataBM[random_summary_dataBM$contrast == "typeBM-A" & random_summary_dataBM$component == "H", 
-                                  c(1,4)]
-# Merge logFC and Hurdle results
-  mast_random_hurdle_resultsBM <- merge(random_logFC_dataBM, random_hurdle_dataBM, by = "primerid")
-# Remove any rows with missing data
-  mast_random_analysis_resultsBM <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBM))
-# Organise in descending order and add Qvalue
-  mast_random_analysis_resultsBM <- mast_random_analysis_resultsBM %>% 
-    mutate(qvalue = qvalue(mast_random_analysis_resultsBM$`Pr(>Chisq)`)$qvalues) %>% 
-    arrange(desc(coef))
-  
-saveRDS(mast_random_analysis_resultsBM, "../BM Publication/MAST_BMAvsBMB.rds")
-
-#Processing BM-A to all other
-  random_zlm_summaryBMA <- MAST::summary(random_zlm_fit, doLRT = "typeBM-A")
+  random_zlm_summaryBMA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restBM-A")
   random_summary_dataBMA <- random_zlm_summaryBMA$datatable
-# Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "typeBM-A" & random_summary_dataBMA$component == "logFC", 
+  random_logFC_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restBM-A" & random_summary_dataBMA$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "typeBM-A" & random_summary_dataBMA$component == "H", 
+  random_hurdle_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restBM-A" & random_summary_dataBMA$component == "H", 
                                   c(1,4)]
-# Merge logFC and Hurdle results
   mast_random_hurdle_resultsBMA <- merge(random_logFC_dataBMA, random_hurdle_dataBMA, by = "primerid")
-# Remove any rows with missing data
   mast_random_analysis_resultsBMA <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBMA))
-# Organise in descending order and add Qvalue
   mast_random_analysis_resultsBMA <- mast_random_analysis_resultsBMA %>% 
     mutate(qvalue = qvalue(mast_random_analysis_resultsBMA$`Pr(>Chisq)`)$qvalues) %>% 
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBMA, "../BM Publication/MAST_BMA.rds")
+```
 
-#Processing BM-B to all other
-  random_zlm_summaryBMB <- MAST::summary(random_zlm_fit, doLRT = "typeBM-B")
+```{r MAST BM-B to all other}
+#Same for BM-B Like vs Other
+  Idents(onlyBM) <- "B_vs_rest"
+  PctExpressing_BMB <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "BM-B"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(B_vs_rest = "BM-B")
+  PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "Rest"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(B_vs_rest = "Rest")
+  colnames(PctExpressing_BMB) <- c("Gene","Percentage_Expressing","B_vs_rest")
+  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","B_vs_rest")
+  PctExpressing <- rbind(PctExpressing_BMA, PctExpressing_BMOther) %>% arrange(Gene)
+  passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
+  Percent_gene_selection_vector <- rownames(onlyBM) %in% passing_genes
+  names(Percent_gene_selection_vector) <- rownames(onlyBM) 
+  Integrated_logTPM <- GetAssayData(onlyBM, assay = "RNA", layer = "data") 
+  Integrated_logTPM_Subset <- Integrated_logTPM[Percent_gene_selection_vector,]
+  gene_metadata <- data.frame(primerid  = rownames(Integrated_logTPM_Subset))
+  cell_metadata <- onlyBM@meta.data
+  cell_metadata$wellKey <- rownames(cell_metadata)
+
+  sca_object <- MAST::FromMatrix(
+      exprsArray = as.matrix(Integrated_logTPM_Subset),  
+      cData = cell_metadata, 
+      fData = gene_metadata,
+      check_sanity = TRUE 
+  )
+  
+  rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
+  
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+
+  random_zlm_summaryBMB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restBM-B")
   random_summary_dataBMB <- random_zlm_summaryBMB$datatable
-# Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "typeBM-B" & random_summary_dataBMB$component == "logFC", 
+  random_logFC_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restBM-B" & random_summary_dataBMB$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "typeBM-B" & random_summary_dataBMB$component == "H", 
+  random_hurdle_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restBM-B" & random_summary_dataBMB$component == "H", 
                                   c(1,4)]
-# Merge logFC and Hurdle results
   mast_random_hurdle_resultsBMB <- merge(random_logFC_dataBMB, random_hurdle_dataBMB, by = "primerid")
-# Remove any rows with missing data
   mast_random_analysis_resultsBMB <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBMB))
-# Organise in descending order and add Qvalue
   mast_random_analysis_resultsBMB <- mast_random_analysis_resultsBMB %>% 
     mutate(qvalue = qvalue(mast_random_analysis_resultsBMB$`Pr(>Chisq)`)$qvalues) %>% 
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBMB, "../BM Publication/MAST_BMB.rds")
+```
 
-#Processing Other to BM-A/BM-B
-  random_zlm_summaryBMO <- MAST::summary(random_zlm_fit, doLRT = "typeOther")
+```{r MAST other to BM-AB}
+#Same for BM-B Like vs Other
+  Idents(onlyBM) <- "Other_vs_AB"
+  PctExpressing_BMOther <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "Other"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(Other_vs_AB = "Other")
+  PctExpressing_BMAB <- data.frame(rowMeans(GetAssayData(subset(x = onlyBM, idents = "BM-AB"),assay = "RNA",slot = "counts") != 0) ) %>% 
+    tibble::rownames_to_column(var = "Gene") %>% mutate(Other_vs_AB = "BM-AB")
+  colnames(PctExpressing_BMOther) <- c("Gene","Percentage_Expressing","Other_vs_AB")
+  colnames(PctExpressing_BMAB) <- c("Gene","Percentage_Expressing","Other_vs_AB")
+  PctExpressing <- rbind(PctExpressing_BMOther, PctExpressing_BMAB) %>% arrange(Gene)
+  passing_genes <- unique(PctExpressing$Gene[PctExpressing$Percentage_Expressing >= 0.05])
+  Percent_gene_selection_vector <- rownames(onlyBM) %in% passing_genes
+  names(Percent_gene_selection_vector) <- rownames(onlyBM) 
+  Integrated_logTPM <- GetAssayData(onlyBM, assay = "RNA", layer = "data") 
+  Integrated_logTPM_Subset <- Integrated_logTPM[Percent_gene_selection_vector,]
+  gene_metadata <- data.frame(primerid  = rownames(Integrated_logTPM_Subset))
+  cell_metadata <- onlyBM@meta.data
+  cell_metadata$wellKey <- rownames(cell_metadata)
+
+  sca_object <- MAST::FromMatrix(
+      exprsArray = as.matrix(Integrated_logTPM_Subset),  
+      cData = cell_metadata, 
+      fData = gene_metadata,
+      check_sanity = TRUE 
+  )
+  
+  rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
+  
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + Other_vs_AB + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
+                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+
+  random_zlm_summaryBMO <- MAST::summary(random_zlm_fit, doLRT = "Other_vs_ABOther")
   random_summary_dataBMO <- random_zlm_summaryBMO$datatable
-# Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataBMO <- random_summary_dataBMO[random_summary_dataBMO$contrast == "Other" & random_summary_dataBMO$component == "logFC", 
+  random_logFC_dataBMO <- random_summary_dataBMO[random_summary_dataBMO$contrast == "Other_vs_ABOther" & random_summary_dataBMO$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataBMO <- random_summary_dataBMO[random_summary_dataBMO$contrast == "Other" & random_summary_dataBMO$component == "H", 
+  random_hurdle_dataBMO <- random_summary_dataBMO[random_summary_dataBMO$contrast == "Other_vs_ABOther" & random_summary_dataBMO$component == "H", 
                                   c(1,4)]
-# Merge logFC and Hurdle results
   mast_random_hurdle_resultsBMO <- merge(random_logFC_dataBMO, random_hurdle_dataBMO, by = "primerid")
-# Remove any rows with missing data
   mast_random_analysis_resultsBMO <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBMO))
-# Organise in descending order and add Qvalue
   mast_random_analysis_resultsBMO <- mast_random_analysis_resultsBMO %>% 
     mutate(qvalue = qvalue(mast_random_analysis_resultsBMO$`Pr(>Chisq)`)$qvalues) %>% 
     arrange(desc(coef))
@@ -2812,6 +2934,9 @@ cds_pt_res
 
 #Plotting interesting genes
 plot_cells(cds, genes = c("Gene1", "Gene2", "Gene3", "Gene4"))
+
+saveRDS(cds, "Monocle PT.rds")
+saveRDS(cds, "Monocle PT genes.rds")
 ```
 
 ```{Monocle in only BM cells (BM-A and BM-B as startpoints)}
@@ -2860,5 +2985,8 @@ cds_pt_resBM
 
 #Plotting interesting genes
 plot_cells(cdsBM, genes = c("Gene1", "Gene2", "Gene3", "Gene4"))
+
+saveRDS(cds, "Monocle BM.rds")
+saveRDS(cds, "Monocle BM genes.rds")
 ```
 
