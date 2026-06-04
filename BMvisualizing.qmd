@@ -1073,7 +1073,7 @@ Figure8
 
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMBgenes), name = "BM-Bscore")
 IntegratedObject <- AddModuleScore(IntegratedObject, features = list(BMAgenes), name = "BM-Ascore")
-IntegratedObject$BMdiff <- scale(IntegratedObject$BM-Ascore1) - scale(IntegratedObject$BM-Bscore1)
+IntegratedObject$BMdiff <- scale(IntegratedObject$`BM-Ascore1`) - scale(IntegratedObject$`BM-Bscore1`)
 
 saveRDS(BMAgenes, "BMAgenes.rds")
 saveRDS(BMBgenes, "BMBgenes.rds")
@@ -1160,7 +1160,7 @@ dev.off()
 
 PTCells$BMALike <- ifelse(PTCells$seurat_clusters %in% c("10"), "BM-A Like", "Not BM-A Like")
 PTCells$BMBLike <- ifelse(PTCells$seurat_clusters %in% c("7"), "BM-B Like", "Not BM-B Like")
-PTCells$BMLike <- ifelse(PTCells$seurat_clusters %in% c("10", "BM-A Like", ifelse(PTCells$seuratclusters %in% c("7"), "BM-B Like", "Other")))
+PTCells$BMLike <- ifelse(PTCells$seurat_clusters %in% c("10"), "BM-A Like", ifelse(PTCells$seurat_clusters %in% c("7"), "BM-B Like", "Other"))
 
 Figure12 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMALike", order = c("BM-A Like", "Not BM-A Like"), cols = c("BM-A Like" = "#FF7F7F", "Not BM-A Like" = "lightgrey")) + ggtitle("BM-A Like PT cells") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
 Figure13 <- DimPlot(PTCells, reduction = "umap.harmony", group.by = "BMBLike", order = c("BM-B Like", "Not BM-B Like"), cols = c("BM-B Like" = "#990000", "Not BM-B Like" = "lightgrey")) + ggtitle("BM-B Like PT cells") + NoLegend() + theme(axis.line = element_line(color = "black"), axis.title = element_text(size = 15, color = "black"), axis.ticks = element_blank(), axis.text = element_blank(), panel.border = element_rect(color = "black", size = 1)) + ylab("UMAP_2") + xlab("UMAP_1")
@@ -1500,7 +1500,7 @@ onlyBM <- FindClusters(onlyBM, resolution = 0.30)
 #Planar ut vid 2, 5, 9, 14 kluster. 9 Känns rimlig, res = 30.
 
 #Setting cluster names 1-13
-new.cluster.ids <- c(1:13) 
+new.cluster.ids <- c(1:9) 
 names(new.cluster.ids) <- levels(onlyBM)
 onlyBM <- RenameIdents(onlyBM, new.cluster.ids)
 onlyBM$seurat_clusters <- Idents(onlyBM)
@@ -1599,6 +1599,19 @@ onlyBMAB$A_vs_B <- as.factor(onlyBMAB$A_vs_B)
 
 ```
 
+```{r Seurat Object from running on cosmos}
+setwd("~/Forskning/Neuroblastoma Met/BM Publication/")
+
+IntegratedObject <- readRDS("BM-Publ/ProcessedObject.rds")
+PTCells <- readRDS("BM-Publ/ProcessedPTCells.rds")
+onlyBM <- readRDS("BM-Publ/ProcessedBMCells.rds")
+mast_analysis_resultsA <- readRDS("BM-Publ/MAST_result_PT_BMA.rds") #From running on cosmos
+mast_analysis_resultsB <- readRDS("BM-Publ/MAST_result_PT_BMB.rds") #From running on cosmos
+mast_random_analysis_resultsBM <- readRDS("BM-Publ/MAST_result_BM.rds")#From cosmos
+mast_random_analysis_resultsBMA <- readRDS("BM-Publ/MAST_result_BM_BMA.rds")#From cosmos
+mast_random_analysis_resultsBMB <- readRDS("BM-Publ/MAST_result_BM_BMB.rds")#From cosmos
+mast_random_analysis_resultsBMO <- readRDS("BM-Publ/MAST_result_BM_BMO.rds")#From cosmos
+```
 
 ```{r MAST Between BM-A Like/BM-B Like PT cells (BM-A Like to non, BM-B like to none)}
   Idents(PTCells) <- "A_vs_rest"
@@ -1639,17 +1652,17 @@ onlyBMAB$A_vs_B <- as.factor(onlyBMAB$A_vs_B)
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
 #Running MAST
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 #Changing and removing Cell_Line_n/Mouse_n due to errors ( Error : grouping factors must have > 1 sampled level and fixed-effect model matrix is rank deficient so dropping 1 column / coefficient). As Cell_Line_n only has 1 mouse after subsetting to PT only. And I think because type/BMLike was very correlated to Cell_Line_n
 
 #Processing
-  random_zlm_summaryA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restBM-A Like")
+  random_zlm_summaryA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restRest")
   random_summary_dataA <- random_zlm_summaryA$datatable
 # Filter and merge the summary data for logFC and Hurdle components
-  random_logFC_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restBM-A Like" & random_summary_dataA$component == "logFC", 
+  random_logFC_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restRest" & random_summary_dataA$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restBM-A Like" & random_summary_dataA$component == "H", 
+  random_hurdle_dataA <- random_summary_dataA[random_summary_dataA$contrast == "A_vs_restRest" & random_summary_dataA$component == "H", 
                                   c(1,4)]
 # Merge logFC and Hurdle results
   mast_random_hurdle_resultsA <- merge(random_logFC_dataA, random_hurdle_dataA, by = "primerid")
@@ -1661,6 +1674,7 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell
     arrange(desc(coef))
   
 saveRDS(mast_analysis_resultsA, "../BM Publication/MAST_BMALikevsOther.rds")
+mast_analysis_resultsA <- readRDS("../BM Publication/MAST_BMALikevsOther.rds") #From running on cosmos
 ```
 
 ```{r MAST BM-B like against rest}
@@ -1691,14 +1705,14 @@ saveRDS(mast_analysis_resultsA, "../BM Publication/MAST_BMALikevsOther.rds")
   
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 
-  random_zlm_summaryB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restBM-B Like")
+  random_zlm_summaryB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restRest")
   random_summary_dataB <- random_zlm_summaryB$datatable
-  random_logFC_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restBM-B Like" & random_summary_dataB$component == "logFC", 
+  random_logFC_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restRest" & random_summary_dataB$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restBM-B Like" & random_summary_dataB$component == "H", 
+  random_hurdle_dataB <- random_summary_dataB[random_summary_dataB$contrast == "B_vs_restRest" & random_summary_dataB$component == "H", 
                                   c(1,4)]
   mast_random_hurdle_resultsB <- merge(random_logFC_dataB, random_hurdle_dataB, by = "primerid")
   mast_analysis_resultsB <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsB))
@@ -1707,6 +1721,7 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell
     arrange(desc(coef))
 
 saveRDS(mast_analysis_resultsB, "../BM Publication/MAST_BMBLikevsOther.rds")
+mast_analysis_resultsB <- readRDS("../BM Publication/MAST_BMBLikevsOther.rds") #From running on cosmos
 
 # Q: Explain the code for the Mast analysis in detail, including the rationale for each step and how the data is being processed
 # A: The code is performing a differential expression analysis using the MAST package to compare gene expression between BM-A Like and Other PT cells. The steps are as follows:
@@ -1725,17 +1740,17 @@ saveRDS(mast_analysis_resultsB, "../BM Publication/MAST_BMBLikevsOther.rds")
 
 ```{r Volcanoplots MAST results in PT}
 #VolcPlot of results BM-A Like
-mastResultsADF <- data.frame(Gene = mast_analysis_resultsA$primerid, Log2FC = mast_analysis_resultsA$coef, AdjPValue = mast_analysis_resultsA$`Pr(>Chisq)`, Significant = ifelse(mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$coef > 0.25, "Upregulated", ifelse(mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsADF <- data.frame(Gene = mast_analysis_resultsA$primerid, Log2FC = mast_analysis_resultsA$coef, AdjPValue = mast_analysis_resultsA$`Pr(>Chisq)`, Significant = ifelse(mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$coef < -0.25, "Upregulated", ifelse(mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$coef > 0.25, "Downregulated", "Not Significant")))
 
 top_genes <- mastResultsADF %>%
   filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:20)
 
-VolcanoplotMastA <- ggplot(mastResultsADF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMastA <- ggplot(mastResultsADF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#6BAED6", #"#00AFBB"
+  scale_color_manual(values = c("Downregulated" = "#90D5FF", #"#00AFBB"
                                 "Not significant" = "grey",
                                 "Upregulated" = "#FF7F7F")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
@@ -1755,17 +1770,17 @@ VolcanoplotMastA
 
 #Volcplot of results from BM-B Like
 #VolcPlot of results BM-A Like
-mastResultsBDF <- data.frame(Gene = mast_analysis_resultsB$primerid, Log2FC = mast_analysis_resultsB$coef, AdjPValue = mast_analysis_resultsB$`Pr(>Chisq)`, Significant = ifelse(mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$coef > 0.25, "Upregulated", ifelse(mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsBDF <- data.frame(Gene = mast_analysis_resultsB$primerid, Log2FC = mast_analysis_resultsB$coef, AdjPValue = mast_analysis_resultsB$`Pr(>Chisq)`, Significant = ifelse(mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$coef < -0.25, "Upregulated", ifelse(mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$coef > 0.25, "Downregulated", "Not Significant")))
 
 top_genes <- mastResultsBDF %>%
   filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:20)
 
-VolcanoplotMastB <- ggplot(mastResultsBDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMastB <- ggplot(mastResultsBDF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#6BAED6", #"#00AFBB"
+  scale_color_manual(values = c("Downregulated" = "#104581", #"#00AFBB"
                                 "Not significant" = "grey",
                                 "Upregulated" = "#990000")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
@@ -1787,13 +1802,13 @@ VolcanoplotMastB
 ```{r Plotting Mast results in PT}
 #Cutoff for selecting DEG BM-A Like
 hist(mast_analysis_resultsA$`Pr(>Chisq)`)
-UpGenesMastBMALike <- mast_analysis_resultsA$primerid[which(mast_analysis_resultsA$coef > 0.25 & mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$qvalue < 0.05)]
-DownGenesMastBMALike <- mast_analysis_resultsA$primerid[which(mast_analysis_resultsA$coef < 0.25 & mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$qvalue < 0.05)]
+UpGenesMastBMALike <- mast_analysis_resultsA$primerid[which(mast_analysis_resultsA$coef < -0.25 & mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$qvalue < 0.05)]
+DownGenesMastBMALike <- mast_analysis_resultsA$primerid[which(mast_analysis_resultsA$coef > 0.25 & mast_analysis_resultsA$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsA$qvalue < 0.05)]
 SignGenesMastBMALike <- c(UpGenesMastBMALike, DownGenesMastBMALike)
 #Cutoff for selecting DEG BM-B Like
 hist(mast_analysis_resultsB$`Pr(>Chisq)`)
-UpGenesMastBMBLike <- mast_analysis_resultsB$primerid[which(mast_analysis_resultsB$coef > 0.25 & mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$qvalue < 0.05)]
-DownGenesMastBMBLike <- mast_analysis_resultsB$primerid[which(mast_analysis_resultsB$coef < 0.25 & mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$qvalue < 0.05)]
+UpGenesMastBMBLike <- mast_analysis_resultsB$primerid[which(mast_analysis_resultsB$coef < -0.25 & mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$qvalue < 0.05)]
+DownGenesMastBMBLike <- mast_analysis_resultsB$primerid[which(mast_analysis_resultsB$coef > 0.25 & mast_analysis_resultsB$`Pr(>Chisq)` < 0.05 & mast_analysis_resultsB$qvalue < 0.05)]
 SignGenesMastBMBLike <- c(UpGenesMastBMBLike, DownGenesMastBMBLike)
 
 #Dotplot of results
@@ -1814,15 +1829,18 @@ dev.off()
 
 ```{r Heatmap BM-Like DEG}
 #Heatmap of results (top 25 up and down genes for both comparisons in one heatmap, columns clustered, annotated for PDX)
-HeatmapGeneList <- c(UpGenesMastBMALike[1:25], DownGenesMastBMALike[1:25], UpGenesMastBMBLike[1:25], DownGenesMastBMBLike[1:25])
+HeatmapGeneList <- c(UpGenesMastBMALike[1:20], DownGenesMastBMALike[1:20], UpGenesMastBMBLike[1:20], DownGenesMastBMBLike[1:20])
+HeatmapGeneList <- unique(HeatmapGeneList)
 
-HeatmapMatr <- GetAssayData(PTCells, assay = "SCT", layer = "scale.data")
+HMObj <- subset(PTCells, features = HeatmapGeneList)
+HMObj <- ScaleData(HMObj, features = HeatmapGeneList, assay = "SCT")
+HeatmapMatr <- GetAssayData(HMObj, assay = "SCT", layer = "scale.data")
 HeatmapMatr <- HeatmapMatr[order(factor(rownames(HeatmapMatr), levels = HeatmapGeneList)), ]
 
 HeatmapAnnotations <- HeatmapAnnotation(PDX = PTCells$Cell_Line_n, Profile = PTCells$BMLike, col = list(PDX = PDX_colours, Profile = c("BM-A Like" = "#FF7F7F", "BM-B Like" = "#990000", "Other" = "lightgrey")), annotation_label = c("PDX", "Profile"), show_legend = FALSE)
 HeatmapAnnotationRow <- rowAnnotation(Signature = ifelse(rownames(HeatmapMatr) %in% UpGenesMastBMALike, "BM-A Like Up DEG", ifelse(rownames(HeatmapMatr) %in% DownGenesMastBMALike, "BM-A Like Down DEG", ifelse(rownames(HeatmapMatr) %in% UpGenesMastBMBLike, "BM-B Like Up DEG", "BM-B Like Down DEG"))), show_legend = FALSE, col = list(Signature = c("BM-A Like Up DEG" = "#FF7F7F", "BM-B Like Up DEG" = "#990000", "BM-A Like Down DEG" = "#90D5FF", "BM-B Like Down DEG" = "#104581")), annotation_label = c(" "))
 
-HMPT <- Heatmap(HeatmapMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HeatmapAnnotations, rigth_annotation = HeatmapAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM-Like DE genes", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+HMPT <- Heatmap(HeatmapMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HeatmapAnnotations, right_annotation =  HeatmapAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM-Like DE genes", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
 
 #Lgnds
 matrixLGND <- Legend(col_fun = col_fun, title = "Expression")
@@ -1849,7 +1867,7 @@ GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID"
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
 KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
@@ -1858,6 +1876,7 @@ GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, 
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -1871,7 +1890,7 @@ DFKEGGResult$Description <- factor(DFKEGGResult$Description, levels = order)
 KEGGBMALikeAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = NULL, y = "-log 10 Adjusted P-value", title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "blue", high = "blue", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold"), 
         axis.text.x = element_text(angle = 60, hjust = 1)
@@ -1879,6 +1898,7 @@ KEGGBMALikeAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, 
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -1902,20 +1922,24 @@ saveplots(KEGGBMALikeAll, "../BM Publication/", "Barplot GSEA KEGG BM-A Like", w
 svg("Barplot GSEA KEGG BM-A Like.svg", width = 20)
 KEGGBMALikeAll
 dev.off()
-saveplots(GOBMALikeAll, "../BM Publication/", "Barplot GSEA GO BM-A Like", w = 2000)
+saveplots(GOBMALikeAll, "../BM Publication/", "Barplot GSEA GO BM-A Like", w = 2000, h = 1500)
 svg("Barplot GSEA GO BM-A Like.svg", width = 20)
 GOBMALikeAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
-DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 0), tail(DFKEGGResult, n = 10))
+DFGO10 <- rbind(head(DFGOResult, n = 1), tail(DFGOResult, n = 10))
 
 #Plotting top 10
 KEGGBMALike10 <- ggplot(DFKEGG10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), y = Description, fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = "-log 10 Adjusted P-value", y = NULL, title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "blue", high = "blue", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold")
   )
@@ -1931,7 +1955,7 @@ saveplots(KEGGBMALike10, "../BM Publication/", "Barplot GSEA KEGG top10 BM-A Lik
 svg("Barplot GSEA KEGG top10 BM-A Like.svg")
 KEGGBMALike10
 dev.off()
-saveplots(GOBMALike10, "../BM Publication/", "Barplot GSEA GO top10 BM-A Like", w = 1100)
+saveplots(GOBMALike10, "../BM Publication/", "Barplot GSEA GO top10 BM-A Like", w = 1800)
 svg("Barplot GSEA GO top10 BM-A Like.svg")
 GOBMALike10
 dev.off()
@@ -1945,7 +1969,7 @@ GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID"
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
 KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
@@ -1954,6 +1978,7 @@ GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, 
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -1975,6 +2000,7 @@ KEGGBMBLikeAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, 
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -1998,13 +2024,17 @@ saveplots(KEGGBMBLikeAll, "../BM Publication/", "Barplot GSEA KEGG BM-B Like", w
 svg("Barplot GSEA KEGG BM-B Like.svg", width = 20)
 KEGGBMBLikeAll
 dev.off()
-saveplots(GOBMBLikeAll, "../BM Publication/", "Barplot GSEA GO BM-B Like", w = 2000)
+saveplots(GOBMBLikeAll, "../BM Publication/", "Barplot GSEA GO BM-B Like", w = 2000, h = 1200)
 svg("Barplot GSEA GO BM-B Like.svg", width = 20)
 GOBMBLikeAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 3), tail(DFKEGGResult, n = 10))
 DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
 
 #Plotting top 10
@@ -2027,7 +2057,7 @@ saveplots(KEGGBMBLike10, "../BM Publication/", "Barplot GSEA KEGG top10 BM-B Lik
 svg("Barplot GSEA KEGG top10 BM-B Like.svg")
 KEGGBMBLike10
 dev.off()
-saveplots(GOBMBLike10, "../BM Publication/", "Barplot GSEA GO top10 BM-B Like", w = 1100)
+saveplots(GOBMBLike10, "../BM Publication/", "Barplot GSEA GO top10 BM-B Like", w = 1200)
 svg("Barplot GSEA GO top10 BM-B Like.svg")
 GOBMBLike10
 dev.off()
@@ -2062,8 +2092,8 @@ dev.off()
 
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
 
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_B + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_B + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 
   random_zlm_summaryBM <- MAST::summary(random_zlm_fit, doLRT = "A_vs_BBM-A")
   random_summary_dataBM <- random_zlm_summaryBM$datatable
@@ -2078,6 +2108,7 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_B + nFeature_RNA + (1 | Cell_Li
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBM, "../BM Publication/MAST_BMAvsBMB.rds")
+mast_random_analysis_resultsBM <- readRDS("../BM Publication/MAST_BMAvsBMB.rds")#From cosmos
 ```
 
 ```{r MAST BM-A to all other}
@@ -2108,14 +2139,14 @@ saveRDS(mast_random_analysis_resultsBM, "../BM Publication/MAST_BMAvsBMB.rds")
   
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 
-  random_zlm_summaryBMA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restBM-A")
+  random_zlm_summaryBMA <- MAST::summary(random_zlm_fit, doLRT = "A_vs_restRest")
   random_summary_dataBMA <- random_zlm_summaryBMA$datatable
-  random_logFC_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restBM-A" & random_summary_dataBMA$component == "logFC", 
+  random_logFC_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restRest" & random_summary_dataBMA$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restBM-A" & random_summary_dataBMA$component == "H", 
+  random_hurdle_dataBMA <- random_summary_dataBMA[random_summary_dataBMA$contrast == "A_vs_restRest" & random_summary_dataBMA$component == "H", 
                                   c(1,4)]
   mast_random_hurdle_resultsBMA <- merge(random_logFC_dataBMA, random_hurdle_dataBMA, by = "primerid")
   mast_random_analysis_resultsBMA <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBMA))
@@ -2124,6 +2155,7 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + A_vs_rest + nFeature_RNA + (1 | Cell
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBMA, "../BM Publication/MAST_BMA.rds")
+mast_random_analysis_resultsBMA <- readRDS("../BM Publication/MAST_BMA.rds")#From cosmos
 ```
 
 ```{r MAST BM-B to all other}
@@ -2154,14 +2186,14 @@ saveRDS(mast_random_analysis_resultsBMA, "../BM Publication/MAST_BMA.rds")
   
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 
-  random_zlm_summaryBMB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restBM-B")
+  random_zlm_summaryBMB <- MAST::summary(random_zlm_fit, doLRT = "B_vs_restRest")
   random_summary_dataBMB <- random_zlm_summaryBMB$datatable
-  random_logFC_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restBM-B" & random_summary_dataBMB$component == "logFC", 
+  random_logFC_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restRest" & random_summary_dataBMB$component == "logFC", 
                                  c(1,7,5,6,8)]
-  random_hurdle_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restBM-B" & random_summary_dataBMB$component == "H", 
+  random_hurdle_dataBMB <- random_summary_dataBMB[random_summary_dataBMB$contrast == "B_vs_restRest" & random_summary_dataBMB$component == "H", 
                                   c(1,4)]
   mast_random_hurdle_resultsBMB <- merge(random_logFC_dataBMB, random_hurdle_dataBMB, by = "primerid")
   mast_random_analysis_resultsBMB <- stats::na.omit(as.data.frame(mast_random_hurdle_resultsBMB))
@@ -2170,6 +2202,7 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + B_vs_rest + nFeature_RNA + (1 | Cell
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBMB, "../BM Publication/MAST_BMB.rds")
+mast_random_analysis_resultsBMB <- readRDS("../BM Publication/MAST_BMB.rds")#From cosmos
 ```
 
 ```{r MAST other to BM-AB}
@@ -2200,8 +2233,8 @@ saveRDS(mast_random_analysis_resultsBMB, "../BM Publication/MAST_BMB.rds")
   
   rm(list = c("Integrated_logTPM","Integrated_logTPM_Subset"))
   
-random_zlm_fit <- MAST::zlm(formula = ~ 1 + Other_vs_AB + nFeature_RNA + (1 | Cell_Line_n/Mouse_n),
-                                  sca_object, method = "glmer", ebayes = FALSE,parallel = TRUE)
+random_zlm_fit <- MAST::zlm(formula = ~ 1 + Other_vs_AB + nFeature_RNA,
+                                  sca_object, method = "bayesglm", ebayes = FALSE,parallel = TRUE)
 
   random_zlm_summaryBMO <- MAST::summary(random_zlm_fit, doLRT = "Other_vs_ABOther")
   random_summary_dataBMO <- random_zlm_summaryBMO$datatable
@@ -2216,23 +2249,29 @@ random_zlm_fit <- MAST::zlm(formula = ~ 1 + Other_vs_AB + nFeature_RNA + (1 | Ce
     arrange(desc(coef))
   
 saveRDS(mast_random_analysis_resultsBMO, "../BM Publication/MAST_BMOther.rds")
+mast_random_analysis_resultsBMO <- readRDS("../BM Publication/MAST_BMOther.rds")#From cosmos
 ```
 
 ```{r Plotting MAST results in BM (BM-A to BM-B)}
 #VolcPlot of results
-mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBM$primerid, Log2FC = mast_random_analysis_resultsBM$coef, AdjPValue = mast_random_analysis_resultsBM$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$coef > 0.25, "Upregulated", ifelse(mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBM$primerid, Log2FC = mast_random_analysis_resultsBM$coef, AdjPValue = mast_random_analysis_resultsBM$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$coef < -0.25, "BM-A", ifelse(mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$coef > 0.25, "BM-B", "Not Significant")))
 
-top_genes <- mastResultsDF %>%
-  filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
+top_genesUp <- mastResultsDF %>%
+  filter( Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:10)
+top_genesDown <- mastResultsDF %>%
+  filter(Log2FC > 0.25) %>%
+  arrange(AdjPValue) %>%
+  dplyr::slice(1:20)
+top_genes <- rbind(top_genesUp, top_genesDown)
 
-VolcanoplotMast <- ggplot(mastResultsDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMast <- ggplot(mastResultsDF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#990000", #"#00AFBB"
+  scale_color_manual(values = c("BM-B" = "#990000", #"#00AFBB"
                                 "Not significant" = "grey",
-                                "Upregulated" = "#FF7F7F")) +
+                                "BM-A" = "#FF7F7F")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
   geom_point(size = 1) +
@@ -2250,8 +2289,8 @@ VolcanoplotMast
 
 #Cutoff for selecting DEG
 hist(mast_random_analysis_resultsBM$`Pr(>Chisq)`)
-BMAGenesMast <- mast_random_analysis_resultsBM$primerid[which(mast_random_analysis_resultsBM$coef > 0.25 & mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$qvalue < 0.05)]
-BMBGenesMast <- mast_random_analysis_resultsBM$primerid[which(mast_random_analysis_resultsBM$coef < 0.25 & mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$qvalue < 0.05)]
+BMAGenesMast <- mast_random_analysis_resultsBM$primerid[which(mast_random_analysis_resultsBM$coef < -0.25 & mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$qvalue < 0.05)]
+BMBGenesMast <- mast_random_analysis_resultsBM$primerid[which(mast_random_analysis_resultsBM$coef > 0.25 & mast_random_analysis_resultsBM$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBM$qvalue < 0.05)]
 SignGenesMastBM <- c(BMAGenesMast, BMBGenesMast)
 
 #Dotplot of results
@@ -2269,44 +2308,51 @@ dev.off()
 #Heatmap of results (clustered columns with pdx and type annotation, top 40 BM-A and 40 BM-B genes)
 HMBMGenes <- c(BMAGenesMast[1:40], BMBGenesMast[1:40])
 
-HMMatr <- GetAssayData(onlyBM, assay = "SCT", layer = "scale.data")
+HMObj <- subset(onlyBM, features = HMBMGenes)
+HMObj <- ScaleData(HMObj, features = HMBMGenes, assay = "SCT", layer = "data")
+HMMatr <- GetAssayData(HMObj, assay = "SCT", layer = "scale.data")
 HMMatr <- HMMatr[order(factor(rownames(HMMatr), levels = HMBMGenes)), ]
 
 HMAnnotations <- HeatmapAnnotation(PDX = onlyBM$Cell_Line_n, Profile = onlyBM$type, col = list(PDX = PDX_colours, Profile = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Other" = "lightgrey")), annotation_label = c("PDX", "Profile"), show_legend = FALSE)
 HMAnnotationRow <- rowAnnotation(Signature = ifelse(rownames(HMMatr) %in% BMAGenesMast, "BM-A DEG", "BM-B DEG"), show_legend = FALSE, col = list(Signature = c("BM-A DEG" = "#FF7F7F", "BM-B DEG" = "#990000")), annotation_label = c(" "))
 
-HMBM <- Heatmap(HMMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HMAnnotations, rigth_annotation = HMAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM-A/B DEG", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+HMBM <- Heatmap(HMMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HMAnnotations, right_annotation = HMAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM-A/B DEG", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
 
 #Lgnds
 BMmatrixLGND <- Legend(col_fun = col_fun, title = "Expression")
 BMcellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
 BMtypeLGND <- Legend(labels = c("BM-A", "BM-B", "Other"), title = "Profile", legend_gp = gpar(fill = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Other" = "lightgrey")))
 BMGeneSignLGND <- Legend(labels = c("BM-A DEG", "BM-B DEG"), title = "Gene signature", legend_gp = gpar(fill = c("BM-A DEG" = "#FF7F7F", "BM-B DEG" = "#990000")))
-LGNDs4 <- packLegend(matrixLGND, cellLineLGND, typeLGND, GeneSignLGND)
+LGNDs4 <- packLegend(BMmatrixLGND, BMcellLineLGND, BMtypeLGND, BMGeneSignLGND)
 
 HeatmapBMDEG <- draw(HMBM, annotation_legend_list = LGNDs4)
 
-png("Heatmap BM-A/B DEG.png", width = 3000, height = 3500, res = 300)
+png("Heatmap BM AB DEG.png", width = 3000, height = 3500, res = 300)
 HeatmapBMDEG
 dev.off()
-svg("Heatmap BM-A/B DEG.svg", width = 15, height = 10)
+svg("Heatmap BM AB DEG.svg", width = 15, height = 10)
 HeatmapBMDEG
 dev.off()
 ```
 
 ```{r Plotting BMA to all other}
 #VolcPlot of results
-mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMA$primerid, Log2FC = mast_random_analysis_resultsBMA$coef, AdjPValue = mast_random_analysis_resultsBMA$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$coef > 0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMA$primerid, Log2FC = mast_random_analysis_resultsBMA$coef, AdjPValue = mast_random_analysis_resultsBMA$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$coef < -0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$coef > 0.25, "Downregulated", "Not Significant")))
 
-top_genes <- mastResultsDF %>%
-  filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
+top_genesUp <- mastResultsDF %>%
+  filter( Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:10)
+top_genesDown <- mastResultsDF %>%
+  filter(Log2FC > 0.25) %>%
+  arrange(AdjPValue) %>%
+  dplyr::slice(1:20)
+top_genes <- rbind(top_genesUp, top_genesDown)
 
-VolcanoplotMastBMA <- ggplot(mastResultsDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMastBMA <- ggplot(mastResultsDF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#990000", #"#00AFBB"
+  scale_color_manual(values = c("Downregulated" = "lightgrey", #"#00AFBB"
                                 "Not significant" = "grey",
                                 "Upregulated" = "#FF7F7F")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
@@ -2326,8 +2372,8 @@ VolcanoplotMastBMA
 
 #Cutoff for selecting DEG
 hist(mast_random_analysis_resultsBMA$`Pr(>Chisq)`)
-BMAUpGenesMast <- mast_random_analysis_resultsBMA$primerid[which(mast_random_analysis_resultsBMA$coef > 0.25 & mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$qvalue < 0.05)]
-BMADownGenesMast <- mast_random_analysis_resultsBMA$primerid[which(mast_random_analysis_resultsBMA$coef < 0.25 & mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$qvalue < 0.05)]
+BMAUpGenesMast <- mast_random_analysis_resultsBMA$primerid[which(mast_random_analysis_resultsBMA$coef < -0.25 & mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$qvalue < 0.05)]
+BMADownGenesMast <- mast_random_analysis_resultsBMA$primerid[which(mast_random_analysis_resultsBMA$coef > 0.25 & mast_random_analysis_resultsBMA$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMA$qvalue < 0.05)]
 SignGenesMastBMA <- c(BMAUpGenesMast, BMADownGenesMast)
 
 #Dotplot of results
@@ -2343,19 +2389,24 @@ dev.off()
 
 ```{r Plotting BMB to all other}
 #VolcPlot of results
-mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMB$primerid, Log2FC = mast_random_analysis_resultsBMB$coef, AdjPValue = mast_random_analysis_resultsBMB$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$coef > 0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMB$primerid, Log2FC = mast_random_analysis_resultsBMB$coef, AdjPValue = mast_random_analysis_resultsBMB$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$coef < -0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$coef > 0.25, "Downregulated", "Not Significant")))
 
-top_genes <- mastResultsDF %>%
-  filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
+top_genesUp <- mastResultsDF %>%
+  filter( Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:20)
+top_genesDown <- mastResultsDF %>%
+  filter(Log2FC > 0.25) %>%
+  arrange(AdjPValue) %>%
+  dplyr::slice(1:10)
+top_genes <- rbind(top_genesUp, top_genesDown)
 
-VolcanoplotMastBMB <- ggplot(mastResultsDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMastBMB <- ggplot(mastResultsDF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#990000", #"#00AFBB"
+  scale_color_manual(values = c("Downregulated" = "lightgrey", #"#00AFBB"
                                 "Not significant" = "grey",
-                                "Upregulated" = "#FF7F7F")) +
+                                "Upregulated" = "#990000")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
   geom_point(size = 1) +
@@ -2373,8 +2424,8 @@ VolcanoplotMastBMB
 
 #Cutoff for selecting DEG
 hist(mast_random_analysis_resultsBMB$`Pr(>Chisq)`)
-BMBUpGenesMast <- mast_random_analysis_resultsBMB$primerid[which(mast_random_analysis_resultsBMB$coef > 0.25 & mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$qvalue < 0.05)]
-BMBDownGenesMast <- mast_random_analysis_resultsBMB$primerid[which(mast_random_analysis_resultsBMB$coef < 0.25 & mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$qvalue < 0.05)]
+BMBUpGenesMast <- mast_random_analysis_resultsBMB$primerid[which(mast_random_analysis_resultsBMB$coef < -0.25 & mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$qvalue < 0.05)]
+BMBDownGenesMast <- mast_random_analysis_resultsBMB$primerid[which(mast_random_analysis_resultsBMB$coef > 0.25 & mast_random_analysis_resultsBMB$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMB$qvalue < 0.05)]
 SignGenesMastBMB <- c(BMBUpGenesMast, BMBDownGenesMast)
 
 #Dotplot of results
@@ -2390,19 +2441,24 @@ dev.off()
 
 ```{r Plotting BMOther to BM-A+BM-B}
 #VolcPlot of results
-mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMO$primerid, Log2FC = mast_random_analysis_resultsBMO$coef, AdjPValue = mast_random_analysis_resultsBMO$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$coef > 0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$coef < -0.25, "Downregulated", "Not Significant")))
+mastResultsDF <- data.frame(Gene = mast_random_analysis_resultsBMO$primerid, Log2FC = mast_random_analysis_resultsBMO$coef, AdjPValue = mast_random_analysis_resultsBMO$`Pr(>Chisq)`, Significant = ifelse(mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$coef < -0.25, "Upregulated", ifelse(mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$coef > 0.25, "Downregulated", "Not Significant")))
 
-top_genes <- mastResultsDF %>%
-  filter(Log2FC > 0.25 | Log2FC < -0.25) %>%
+top_genesUp <- mastResultsDF %>%
+  filter( Log2FC < -0.25) %>%
   arrange(AdjPValue) %>%
-  dplyr::slice(1:40)
+  dplyr::slice(1:5)
+top_genesDown <- mastResultsDF %>%
+  filter(Log2FC > 0.25) %>%
+  arrange(AdjPValue) %>%
+  dplyr::slice(1:15)
+top_genes <- rbind(top_genesUp, top_genesDown)
 
-VolcanoplotMastBMO <- ggplot(mastResultsDF, aes(x = Log2FC, y = -log10(AdjPValue), color = Significant)) +
+VolcanoplotMastBMO <- ggplot(mastResultsDF, aes(x = -Log2FC, y = -log10(AdjPValue), color = Significant)) +
   geom_point(alpha = 0.5) +
   scale_y_continuous(breaks = seq(0, 1000, by = 100), expand = expansion(0, c(0, 100))) +
-  scale_color_manual(values = c("Downregulated" = "#990000", #"#00AFBB"
+  scale_color_manual(values = c("Downregulated" = "#FF0000", #"#00AFBB"
                                 "Not significant" = "grey",
-                                "Upregulated" = "#FF7F7F")) +
+                                "Upregulated" = "lightgrey")) +
   geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
   geom_point(size = 1) +
@@ -2420,14 +2476,14 @@ VolcanoplotMastBMO
 
 #Cutoff for selecting DEG
 hist(mast_random_analysis_resultsBMO$`Pr(>Chisq)`)
-BMOUpGenesMast <- mast_random_analysis_resultsBMO$primerid[which(mast_random_analysis_resultsBMO$coef > 0.25 & mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$qvalue < 0.05)]
-BMODownGenesMast <- mast_random_analysis_resultsBMO$primerid[which(mast_random_analysis_resultsBMO$coef < 0.25 & mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$qvalue < 0.05)]
+BMOUpGenesMast <- mast_random_analysis_resultsBMO$primerid[which(mast_random_analysis_resultsBMO$coef < -0.25 & mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$qvalue < 0.05)]
+BMODownGenesMast <- mast_random_analysis_resultsBMO$primerid[which(mast_random_analysis_resultsBMO$coef > 0.25 & mast_random_analysis_resultsBMO$`Pr(>Chisq)` < 0.05 & mast_random_analysis_resultsBMO$qvalue < 0.05)]
 SignGenesMastBMO <- c(BMOUpGenesMast, BMODownGenesMast)
 
 #Dotplot of results
 DotPlot(onlyBM, features = BMOUpGenesMast, group.by = "type") + RotatedAxis()
 DotPlot(onlyBM, features = BMODownGenesMast, group.by = "type") + RotatedAxis()
-DotplotBMAgenes <- DotPlot(onlyBM, features = SignGenesMastBMO, group.by = "type") + RotatedAxis()
+DotplotBMOgenes <- DotPlot(onlyBM, features = SignGenesMastBMO, group.by = "type") + RotatedAxis()
 
 saveplots(DotplotBMOgenes, "../BM Publication/", "Dotplot BM Other to BM-A and B", w = 3000)
 svg("Dotplot BM Other to BM-A and B.svg", width = 20)
@@ -2437,22 +2493,25 @@ dev.off()
 
 ```{r Combined Heatmap of BM-A, BM-B and BM-Other}
 #Heatmap of results (clustered columns with pdx and type annotation, top 40 BM-A and 40 BM-B genes)
-HMBMGenes2 <- c(BMAUpGenesMast[1:20], BMBUpGenesMast[1:20], BMOUpGenesMast[1:20])
+HMBMGenes2 <- c(BMAUpGenesMast[1:20], BMBUpGenesMast[1:20], BMOUpGenesMast[1:22])
+HMBMGenes2 <- unique(HMBMGenes2)
 
-HMMatr <- GetAssayData(onlyBM, assay = "SCT", layer = "scale.data")
+HMObj <- subset(onlyBM, features = HMBMGenes2)
+HMObj <- ScaleData(HMObj, features = HMBMGenes2, assay = "SCT", layer = "data")
+HMMatr <- GetAssayData(HMObj, assay = "SCT", layer = "scale.data")
 HMMatr <- HMMatr[order(factor(rownames(HMMatr), levels = HMBMGenes2)), ]
 
 HMAnnotations <- HeatmapAnnotation(PDX = onlyBM$Cell_Line_n, Profile = onlyBM$type, col = list(PDX = PDX_colours, Profile = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Other" = "lightgrey")), annotation_label = c("PDX", "Profile"), show_legend = FALSE)
-HMAnnotationRow <- rowAnnotation(Signature = ifelse(rownames(HMMatr) %in% BMAUpGenesMast, "BM-A DEG", ifelse(rownames(HMMatr) %in% BMBUpGenesMast, "BM-B DEG", "Other DEG")), show_legend = FALSE, col = list(Signature = c("BM-A DEG" = "#FF7F7F", "BM-B DEG" = "#990000", "Other DEG" = "lightgrey")), annotation_label = c(" "))
+HMAnnotationRow <- rowAnnotation(Signature = ifelse(rownames(HMMatr) %in% BMAUpGenesMast[1:20], "BM-A DEG", ifelse(rownames(HMMatr) %in% BMBUpGenesMast[1:20], "BM-B DEG", "Other DEG")), show_legend = FALSE, col = list(Signature = c("BM-A DEG" = "#FF7F7F", "BM-B DEG" = "#990000", "Other DEG" = "lightgrey")), annotation_label = c(" "))
 
-HMBM2 <- Heatmap(HMMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HMAnnotations, rigth_annotation = HMAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM type DEG", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
+HMBM2 <- Heatmap(HMMatr, name = "Heatmap", cluster_rows = FALSE, cluster_columns = TRUE, show_column_dend = TRUE, show_column_names = FALSE, show_row_dend = FALSE, top_annotation = HMAnnotations, right_annotation = HMAnnotationRow, col = col_fun, use_raster = FALSE, column_title = "Heatmap BM type DEG", show_heatmap_legend = FALSE, row_names_gp = gpar(fontsize = 6))
 
 #Lgnds
 BMmatrixLGND <- Legend(col_fun = col_fun, title = "Expression")
 BMcellLineLGND <- Legend(labels = c("LU-NB-1", "LU-NB-2", "LU-NB-3"), title = "PDX", legend_gp = gpar(fill = PDX_colours))
 BMtypeLGND <- Legend(labels = c("BM-A", "BM-B", "Other"), title = "Profile", legend_gp = gpar(fill = c("BM-A" = "#FF7F7F", "BM-B" = "#990000", "Other" = "lightgrey")))
 BMGeneSignLGND2 <- Legend(labels = c("BM-A DEG", "BM-B DEG", "Other DEG"), title = "Gene signature", legend_gp = gpar(fill = c("BM-A DEG" = "#FF7F7F", "BM-B DEG" = "#990000", "Other DEG" = "lightgrey")))
-LGNDs5 <- packLegend(matrixLGND, cellLineLGND, typeLGND, GeneSignLGND2)
+LGNDs5 <- packLegend(BMmatrixLGND, BMcellLineLGND, BMtypeLGND, BMGeneSignLGND2)
 
 HeatmapBMDEG2 <- draw(HMBM2, annotation_legend_list = LGNDs5)
 
@@ -2468,20 +2527,22 @@ dev.off()
 ```{r gsea from results BM}
 #Skapa lista med fold-change
 gseaGeneList <- mast_random_analysis_resultsBM$coef
-names(gseaGeneList) <- mast_analysis_results$primerid
-GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db) #översätter till entrez
+names(gseaGeneList) <- mast_random_analysis_resultsBM$primerid
+GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+#översätter till entrez
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
-KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
-GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE)
+KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
+GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
 GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, measure = "Wang")
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -2495,7 +2556,7 @@ DFKEGGResult$Description <- factor(DFKEGGResult$Description, levels = order)
 KEGGBMAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = NULL, y = "-log 10 Adjusted P-value", title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "red", high = "red", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold"), 
         axis.text.x = element_text(angle = 60, hjust = 1)
@@ -2503,6 +2564,7 @@ KEGGBMAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(p
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -2522,24 +2584,28 @@ GOBMAll <- ggplot(DFGOResult, aes(x = Description, y = ifelse(NES < 0, log(p.adj
         axis.text.x = element_text(angle = 60, hjust = 1)
   )
 
-saveplots(KEGGBMAll, "../BM Publication/", "Barplot GSEA KEGG BM-A/B", w = 2000)
-svg("Barplot GSEA KEGG BM-A/B.svg", width = 20)
+saveplots(KEGGBMAll, "../BM Publication/", "Barplot GSEA KEGG BM AB", w = 2000)
+svg("Barplot GSEA KEGG BM AB.svg", width = 20)
 KEGGBMAll
 dev.off()
-saveplots(GOBMAll, "../BM Publication/", "Barplot GSEA GO BM-A/B", w = 2000)
-svg("Barplot GSEA GO BM-A/B.svg", width = 20)
+saveplots(GOBMAll, "../BM Publication/", "Barplot GSEA GO BM AB", w = 2000)
+svg("Barplot GSEA GO BM AB.svg", width = 20)
 GOBMAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 0))
 DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
 
 #Plotting top 10
 KEGGBM10 <- ggplot(DFKEGG10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), y = Description, fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = "-log 10 Adjusted P-value", y = NULL, title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "red", high = "red", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold")
   )
@@ -2551,12 +2617,12 @@ GOBM10 <- ggplot(DFGO10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)),
   theme(plot.title = element_text(face = "bold")
   )
 
-saveplots(KEGGBM10, "../BM Publication/", "Barplot GSEA KEGG top10 BM-A/B")
-svg("Barplot GSEA KEGG top10 BM-A/B.svg")
+saveplots(KEGGBM10, "../BM Publication/", "Barplot GSEA KEGG top10 BM AB")
+svg("Barplot GSEA KEGG top10 BM AB.svg")
 KEGGBM10
 dev.off()
-saveplots(GOBM10, "../BM Publication/", "Barplot GSEA GO top10 BM-A/B", w = 1100)
-svg("Barplot GSEA GO top10 BM-A/B.svg")
+saveplots(GOBM10, "../BM Publication/", "Barplot GSEA GO top10 BM AB", w = 1100)
+svg("Barplot GSEA GO top10 BM AB.svg")
 GOBM10
 dev.off()
 ```
@@ -2564,20 +2630,21 @@ dev.off()
 ```{r GSEA from BM-A to all other}
 #Skapa lista med fold-change
 gseaGeneList <- mast_random_analysis_resultsBMA$coef
-names(gseaGeneList) <- mast_analysis_results$primerid
+names(gseaGeneList) <- mast_random_analysis_resultsBMA$primerid
 GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db) #översätter till entrez
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
-KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
-GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE)
+KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
+GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
 GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, measure = "Wang")
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -2599,6 +2666,7 @@ KEGGBMAAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -2628,7 +2696,11 @@ GOBMAAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 8))
 DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
 
 #Plotting top 10
@@ -2660,20 +2732,21 @@ dev.off()
 ```{r GSEA from BM-B to all other}
 #Skapa lista med fold-change
 gseaGeneList <- mast_random_analysis_resultsBMB$coef
-names(gseaGeneList) <- mast_analysis_results$primerid
+names(gseaGeneList) <- mast_random_analysis_resultsBMB$primerid
 GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db) #översätter till entrez
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
-KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
-GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE)
+KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
+GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
 GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, measure = "Wang")
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -2687,7 +2760,7 @@ DFKEGGResult$Description <- factor(DFKEGGResult$Description, levels = order)
 KEGGBMBAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = NULL, y = "-log 10 Adjusted P-value", title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "blue", high = "blue", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold"), 
         axis.text.x = element_text(angle = 60, hjust = 1)
@@ -2695,6 +2768,7 @@ KEGGBMBAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -2724,14 +2798,18 @@ GOBMBAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
-DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 0), tail(DFKEGGResult, n = 7))
+DFGO10 <- rbind(head(DFGOResult, n = 7), tail(DFGOResult, n = 9))
 
 #Plotting top 10
 KEGGBMB10 <- ggplot(DFKEGG10, aes(x = ifelse(NES < 0, log(p.adjust), -log(p.adjust)), y = Description, fill = NES)) +
   geom_col(width = 0.8) +
   labs(x = "-log 10 Adjusted P-value", y = NULL, title = "KEGG GSEA") +
-  scale_fill_gradient(low  = "blue", high = "red", name = "NES") +
+  scale_fill_gradient(low  = "blue", high = "blue", name = "NES") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold")
   )
@@ -2756,20 +2834,21 @@ dev.off()
 ```{r GSEA from BM-O to BM-A and B}
 #Skapa lista med fold-change
 gseaGeneList <- mast_random_analysis_resultsBMO$coef
-names(gseaGeneList) <- mast_analysis_results$primerid
+names(gseaGeneList) <- mast_random_analysis_resultsBMO$primerid
 GeneNameDF <- bitr(names(gseaGeneList), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db) #översätter till entrez
 
 gseaGeneList <- gseaGeneList[GeneNameDF$SYMBOL]
 names(gseaGeneList) <- GeneNameDF$ENTREZID
-gseaGeneList <- sort(gseaGeneList, decreasing = TRUE)
+gseaGeneList <- sort(gseaGeneList, decreasing = FALSE)
 
 #Running GSEA
-KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE)
-GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE)
+KEGGResult <- gseKEGG(geneList = gseaGeneList, organism = "hsa", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
+GOResult <- gseGO(geneList = gseaGeneList, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pvalueCutoff = 0.05, verbose = FALSE, eps = 0, nPermSimple = 50000)
 GOResult <- simplify(GOResult, cutoff = 0.7, by = "p.adjust", select_fun = min, measure = "Wang")
 
 #Preparing/setting order
 DFKEGGResult <- KEGGResult@result
+DFKEGGResult <- DFKEGGResult[!is.na(DFKEGGResult$ID), ]
 DFKEGGResult <- DFKEGGResult[DFKEGGResult$p.adjust < 0.05, ]
 DFKEGGResult <- head(DFKEGGResult[order(DFKEGGResult$p.adjust), ], 100)
 DFKEGGResult <- DFKEGGResult[order(-DFKEGGResult$p.adjust), ]
@@ -2791,6 +2870,7 @@ KEGGBMOAll <- ggplot(DFKEGGResult, aes(x = Description, y = ifelse(NES < 0, log(
 
 #Preparing/setting order
 DFGOResult <- GOResult@result
+DFGOResult <- DFGOResult[!is.na(DFGOResult$ID), ]
 DFGOResult <- DFGOResult[DFGOResult$p.adjust < 0.05, ]
 DFGOResult <- head(DFGOResult[order(DFGOResult$p.adjust), ], 100)
 DFGOResult <- DFGOResult[order(-DFGOResult$p.adjust), ]
@@ -2814,13 +2894,17 @@ saveplots(KEGGBMOAll, "../BM Publication/", "Barplot GSEA KEGG other to BM-A and
 svg("Barplot GSEA KEGG other to BM-A and B.svg", width = 20)
 KEGGBMOAll
 dev.off()
-saveplots(GOBMOAll, "../BM Publication/", "Barplot GSEA GO other to BM-A and B", w = 2000)
-svg("Barplot GSEA GO other to BM-A and B.svg", width = 20)
+saveplots(GOBMOAll, "../BM Publication/", "Barplot GSEA GO other to BM-A and B", w = 2000, h = 1200)
+svg("Barplot GSEA GO other to BM-A and B.svg", width = 20, height = 12)
 GOBMOAll
 dev.off()
 
 #Selecting top 10
-DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 10))
+DFKEGGResult <- DFKEGGResult %>% 
+  arrange(factor(Description))
+DFGOResult <- DFGOResult %>% 
+  arrange(factor(Description))
+DFKEGG10 <- rbind(head(DFKEGGResult, n = 10), tail(DFKEGGResult, n = 7))
 DFGO10 <- rbind(head(DFGOResult, n = 10), tail(DFGOResult, n = 10))
 
 #Plotting top 10
@@ -2853,17 +2937,17 @@ dev.off()
 ```{r Comparing between different DEG lists}
 #Venn diagram
 venn.plot <- venn.diagram(
-  x = list("BM-A original" = BMAGenes, "BM-B original" = BMBgenes, "BM-A DEG" = BMAGenesMast, "BM-B DEG" = BMBGenesMast, "BM-A Like DEG" = UpGenesMastBMALike, "BM-B Like DEG" = UpGenesMastBMBLike),
-  category.names = c("BM-A original", "BM-B original", "BM-A DEG", "BM-B DEG", "BM-A Like DEG", "BM-B Like DEG"),
+  x = list("BM-A original" = BMAgenes, "BM-B original" = BMBgenes, "BM-A Like DEG" = UpGenesMastBMALike, "BM-B Like DEG" = UpGenesMastBMBLike),
+  category.names = c("BM-A original", "BM-B original", "BM-A Like DEG", "BM-B Like DEG"),
   filename = NULL,
-  fill = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF", "#DE597CFF", "#E87B89FF"),
+  fill = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF"),
   alpha = 0.6,
   col = "black",
   lwd = 2,
   cex = 2,
   fontface = "bold",
   cat.fontface = "bold",
-  cat.col = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF", "#DE597CFF", "#E87B89FF"),
+  cat.col = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF"),
   margin = 0.1,
   output=TRUE
 )
@@ -2871,8 +2955,45 @@ venn.plot
 
 #Venn diagram
 venn.plot2 <- venn.diagram(
-  x = list("BM-A original" = BMAGenes, "BM-B original" = BMBgenes, "BM-A DEG" = BMAGenesMast, "BM-B DEG" = BMBGenesMast, "BM-A Like DEG" = UpGenesMastBMALike, "BM-B Like DEG" = UpGenesMastBMBLike, "BM-A DEG 2" = BMAUpGenesMast, "BM-B DEG 2" = BMBUpGenesMast, "BM Other DEG" = BMOUpGenesMast),
-  category.names = c("BM-A original", "BM-B original", "BM-A DEG", "BM-B DEG", "BM-A Like DEG", "BM-B Like DEG", "BM-A DEG 2", "BM-B DEG 2", "BM Other DEG"),
+  x = list("BM-A original" = BMAgenes, "BM-B original" = BMBgenes, "BM-A DEG" = BMAGenesMast, "BM-B DEG" = BMBGenesMast),
+  category.names = c("BM-A original", "BM-B original", "BM-A DEG", "BM-B DEG"),
+  filename = NULL,
+  fill = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF"),
+  alpha = 0.6,
+  col = "black",
+  lwd = 2,
+  cex = 2,
+  fontface = "bold",
+  cat.fontface = "bold",
+  cat.col = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF"),
+  margin = 0.1,
+  output=TRUE
+)
+venn.plot2
+
+#Venn diagram
+venn.plot3 <- venn.diagram(
+  x = list("BM-A original" = BMAgenes, "BM-B original" = BMBgenes, "BM-A DEG" = BMAUpGenesMast, "BM-B DEG" = BMBUpGenesMast, "BM Other DEG" = BMOUpGenesMast),
+  category.names = c("BM-A original", "BM-B original", "BM-A DEG", "BM-B DEG", "BM Other DEG"),
+  filename = NULL,
+  fill = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF", "#DE597CFF"),
+  alpha = 0.6,
+  col = "black",
+  lwd = 2,
+  cex = 2,
+  fontface = "bold",
+  cat.fontface = "bold",
+  cat.col = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF", "#DE597CFF"),
+  margin = 0.1,
+  output=TRUE
+)
+venn.plot3
+
+#Trying to make one with all
+#install.packages("venneuler")
+library(rJava)
+library(venneuler)
+venn.plot4 <- venneuler("BM-A original" = length(BMAgenes), "BM-B original" = length(BMBgenes), "BM-A DEG" = length(BMAGenesMast), "BM-B DEG" = length(BMBGenesMast), "BM-A Like DEG" = length(UpGenesMastBMALike), "BM-B Like DEG" = length(UpGenesMastBMBLike), "BM-A DEG 2" = length(BMAUpGenesMast), "BM-B DEG 2" = length(BMBUpGenesMast), "BM Other DEG" = length(BMOUpGenesMast), "BM-A original"&"BM-A DEG" = length(intersect(BMAgenes, BMAGenesMast)), "BM-B original"&"BM-B DEG" = length(intersect(BMBgenes, BMBGenesMast)), "BM-A original"&"BM-A Like DEG" = length(intersect(BMAgenes, UpGenesMastBMALike)), "BM-B original"&"BM-B Like DEG" = length(intersect(BMBgenes, UpGenesMastBMBLike)), "BM-A DEG"&"BM-A Like DEG" = length(intersect(BMAGenesMast, UpGenesMastBMALike)), "BM-B DEG"&"BM-B Like DEG" = length(intersect(BMBGenesMast, UpGenesMastBMBLike)), "BM-A original"&"BM-A DEG 2" = length(intersect(BMAgenes, BMAUpGenesMast)), "BM-B original"&"BM-B DEG 2" = length(intersect(BMBgenes, BMBUpGenesMast)), "BM-A original"&"BM Other DEG" = length(intersect(BMAgenes, BMOUpGenesMast)), "BM-B original"&"BM Other DEG" = length(intersect(BMBgenes, BMOUpGenesMast)), "BM-A DEG"&"BM Other DEG" = length(intersect(BMAGenesMast, BMOUpGenesMast)), "BM-B DEG"&"BM Other DEG" = length(intersect(BMBGenesMast, BMOUpGenesMast)), "BM-A Like DEG"&"BM Other DEG" = length(intersect(UpGenesMastBMALike, BMOUpGenesMast)), "BM-B Like DEG"&"BM Other DEG" = length(intersect(UpGenesMastBMBLike, BMOUpGenesMast)), "BM-A DEG 2"&"BM Other DEG" = length(intersect(BMAUpGenesMast, BMOUpGenesMast)), "BM-B DEG 2"&"BM Other DEG" = length(intersect(BMBUpGenesMast, BMOUpGenesMast)), "BM-A original"&"BM-A DEG"&"BM-A Like DEG" = length(intersect(BMAgenes, intersect(BMAGenesMast, UpGenesMastBMALike))), "BM-B original"&"BM-B DEG"&"BM-B Like DEG" = length(intersect(BMBgenes, intersect(BMBGenesMast, UpGenesMastBMBLike))), "BM-A original"&"BM-A DEG 2"&"BM Other DEG" = length(intersect(BMAgenes, intersect(BMAUpGenesMast, BMOUpGenesMast))), "BM-B original"&"BM-B DEG 2"&"BM Other DEG" = length(intersect(BMBgenes, intersect(BMBUpGenesMast, BMOUpGenesMast))), "BM-A original"&"BM-A Like DEG"&"BM Other DEG" = length(intersect(BMAgenes, intersect(UpGenesMastBMALike, BMOUpGenesMast))), "BM-B original"&"BM-B Like DEG"&"BM Other DEG" = length(intersect(BMBgenes, intersect(UpGenesMastBMBLike, BMOUpGenesMast))), "BM-A DEG"&"BM-A Like DEG"&"BM Other DEG" = length(intersect(BMAGenesMast, intersect(UpGenesMastBMALike, BMOUpGenesMast))), "BM-B DEG"&"BM-B Like DEG"&"BM Other DEG" = length(intersect(BMBGenesMast, intersect(UpGenesMastBMBLike, BMOUpGenesMast))), "BM-A original"&"BM-A DEG"&"BM-A Like DEG"&"BM Other DEG" = length(intersect(BMAgenes, intersect(BMAGenesMast, intersect(UpGenesMastBMALike, BMOUpGenesMast)))), "BM-B original"&"BM-B DEG"&"BM-B Like DEG"&"BM Other DEG" = length(intersect(BMBgenes, intersect(BMBGenesMast, intersect(UpGenesMastBMBLike, BMOUpGenesMast)))),
   filename = NULL,
   fill = c("#F4C40FFF", "#FE9B00FF", "#D8443CFF", "#9B3441FF", "#DE597CFF", "#E87B89FF", "#E6A2A6FF", "#AA7AA1FF", "#9F5691FF"),
   alpha = 0.6,
@@ -2885,7 +3006,7 @@ venn.plot2 <- venn.diagram(
   margin = 0.1,
   output=TRUE
 )
-venn.plot2
+venn.plot4
 ```
 
 ```{Monocle in all cells (PT as startpoint and BM as endpoint)}
