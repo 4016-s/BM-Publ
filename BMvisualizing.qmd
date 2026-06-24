@@ -1941,6 +1941,53 @@ svg("Venn diagram BM genes and BM-A against -B genes.svg", width = 6, height = 6
 venn.plot2
 dev.off()
 
+venn.plot3 <- venn.diagram(
+  x = list("BM-A original" = BMAgenes, "BM-A DEG" = BMAGenesMast),
+  category.names = c("BM-A original", "BM-A DEG"),
+  filename = NULL,
+  fill = c("#E6550D", "#FF7F7F"),
+  alpha = 0.6,
+  col = "black",
+  lwd = 2,
+  cex = 2,
+  fontface = "bold",
+  cat.fontface = "bold",
+  cat.col = c("#E6550D", "#FF7F7F"),
+  margin = 0.1,
+  output=TRUE
+)
+venn.plot3
+
+png("Venn diagram BM-A genes and BM-A against -B genes.png", width = 900, height = 900, res = 100)
+venn.plot3
+dev.off()
+svg("Venn diagram BM-A genes and BM-A against -B genes.svg", width = 6, height = 6)
+venn.plot3
+dev.off()
+
+venn.plot4 <- venn.diagram(
+  x = list("BM-B original" = BMBgenes, "BM-B DEG" = BMBGenesMast),
+  category.names = c("BM-B original", "BM-B DEG"),
+  filename = NULL,
+  fill = c("#E6550D", "#990000"),
+  alpha = 0.6,
+  col = "black",
+  lwd = 2,
+  cex = 2,
+  fontface = "bold",
+  cat.fontface = "bold",
+  cat.col = c("#E6550D", "#990000"),
+  margin = 0.1,
+  output=TRUE
+)
+venn.plot4
+
+png("Venn diagram BM-B genes and BM-A against -B genes.png", width = 900, height = 900, res = 100)
+venn.plot4
+dev.off()
+svg("Venn diagram BM-B genes and BM-A against -B genes.svg", width = 6, height = 6)
+venn.plot4
+dev.off()
 
 ```
 
@@ -1976,6 +2023,7 @@ cds <- learn_graph(cds, use_partition = FALSE)
 cds <- order_cells(cds) #Picking startpoint (possible to pick endpoint and reverse, har for 2 endpoints?)
 
 UMAPTrajectory <- plot_cells(cds, color_cells_by = "pseudotime")
+UMAPTrajectory
 rowData(cds)$gene_short_name <- rownames(cds)
 
 saveplots(UMAPTrajectory, "../BM Publication/", "UMAP Trajectory")
@@ -2122,22 +2170,119 @@ onlyBMA <- subset(onlyBM, type == "BM-A")
 onlyBMALike <- subset(PTCells, BMLike == "BM-A Like")
 DefaultAssay(onlyBMA) <- "SCT"
 DefaultAssay(onlyBMALike) <- "SCT"
-Anchors <- FindTransferAnchors(reference = onlyBMA, query = onlyBMALike, normalization.method = "LogNormalize", dims = 1:20, reference.reduction = "pca", reference.assay = "RNA", query.assay = "RNA", features = VariableFeatures(onlyBMA))
-onlyBMALike <- MapQuery(anchorset = Anchors, reference = onlyBM, query = onlyBMALike,
-    refdata = list(celltype = "seurat_clusters"), reference.reduction = "integrated.harmony", reduction.model = "umap")
-
-
-onlyBMALike <- RunPCA(onlyBMALike, features = VariableFeatures(onlyBMA), assay = "SCT", verbose = FALSE)
-onlyBMALike <- ProjectDimReduc(object = onlyBMALike, reduction = onlyBMA[["pca"]], assay = "SCT")
-query[["umap"]] <- MapQuery(anchorset = NULL, query = onlyBMALike, reference = onlyBMA, reference.reduction = "pca", reduction.model = "umap")
-
-onlyBMALike <- RunUMAP(onlyBMALike, reduction = "pca", dims = 1:30, reduction.model = onlyBMA[["umap.harmony"]])
 
 onlyBMALike <- ProjectUMAP(query = onlyBMALike, query.reduction = "pca", reference = onlyBMA,
     reference.reduction = "pca", reduction.model = "umap.harmony")
 
+BMAUMAP <- DimPlot(onlyBMA, reduction = "umap.harmony", group.by = "type")
+BMALikeUMAP <- DimPlot(onlyBMALike, reduction = "ref.umap", group.by = "BMLike") + xlim(-7, 12) + ylim(-4, 5.5)
+
+saveplots(BMAUMAP, "../BM Publication/", "UMAP BMA")
+svg("UMAP BMA.svg")
+BMAUMAP
+dev.off()
+saveplots(BMALikeUMAP, "../BM Publication/", "UMAP BMALike")
+svg("UMAP BMALike.svg")
+BMALikeUMAP
+dev.off()
+
+DefaultAssay(onlyBMA) <- "RNA"
+cdsA <- SeuratWrappers::as.cell_data_set(JoinLayers(onlyBMA))
+
+#Checking
+class(cdsA)
+reducedDims(cdsA)
+names(colData(cdsA))
+
+#Transfering umap
+reducedDims(cdsA)$UMAP <- Embeddings(onlyBMA, "umap.harmony")
+reducedDims(cdsA)
+
+#Transfering clusters
+clusters <- onlyBMA$seurat_clusters
+names(clusters) <- colnames(onlyBMA)
+cdsA@clusters$UMAP$clusters <- clusters
+
+#Setting 1 partition?
+partitions <- factor(rep(1, ncol(cdsA)))
+names(partitions) <- colnames(cdsA)
+cdsA@clusters$UMAP$partitions <- partitions
+
+plot_cells(cdsA, show_trajectory_graph = FALSE, color_cells_by = "seurat_clusters", label_groups_by_cluster = TRUE, label_leaves = TRUE, label_branch_points = TRUE)
+plot_cells(cdsA, show_trajectory_graph = FALSE, color_cells_by = "partition")
+
+
+cdsA <- learn_graph(cdsA, use_partition = FALSE)
+cdsA <- order_cells(cdsA) #Picking startpoint (possible to pick endpoint and reverse, har for 2 endpoints?)
+
+UMAPTrajectoryA <- plot_cells(cdsA, color_cells_by = "pseudotime")
+UMAPTrajectoryA
+rowData(cdsA)$gene_short_name <- rownames(cdsA)
+
+saveplots(UMAPTrajectoryA, "../BM Publication/", "UMAP Trajectory BM A")
+svg("UMAP Trajectory BM A.svg")
+UMAPTrajectoryA
+dev.off()
+
+
 ```
 
 ```{r Monocle in BM-B cells}
+onlyBMB <- subset(onlyBM, type == "BM-B")
+onlyBMBLike <- subset(PTCells, BMLike == "BM-B Like")
+DefaultAssay(onlyBMB) <- "SCT"
+DefaultAssay(onlyBMBLike) <- "SCT"
 
+onlyBMBLike <- ProjectUMAP(query = onlyBMBLike, query.reduction = "pca", reference = onlyBMB,
+    reference.reduction = "pca", reduction.model = "umap.harmony")
+
+BMBUMAP <- DimPlot(onlyBMB, reduction = "umap.harmony", group.by = "type")
+BMBLikeUMAP <- DimPlot(onlyBMBLike, reduction = "ref.umap", group.by = "BMLike") + xlim(-7, 12) + ylim(-4, 5.5)
+
+saveplots(BMBUMAP, "../BM Publication/", "UMAP BMB")
+svg("UMAP BMB.svg")
+BMBUMAP
+dev.off()
+saveplots(BMBLikeUMAP, "../BM Publication/", "UMAP BMBLike")
+svg("UMAP BMBLike.svg")
+BMBLikeUMAP
+dev.off()
+
+DefaultAssay(onlyBMB) <- "RNA"
+cdsB <- SeuratWrappers::as.cell_data_set(JoinLayers(onlyBMB))
+
+#Checking
+class(cdsB)
+reducedDims(cdsB)
+names(colData(cdsB))
+
+#Transfering umap
+reducedDims(cdsB)$UMAP <- Embeddings(onlyBMB, "umap.harmony")
+reducedDims(cdsB)
+
+#Transfering clusters
+clusters <- onlyBMB$seurat_clusters
+names(clusters) <- colnames(onlyBMB)
+cdsB@clusters$UMAP$clusters <- clusters
+
+#Setting 1 partition?
+partitions <- factor(rep(1, ncol(cdsB)))
+names(partitions) <- colnames(cdsB)
+cdsB@clusters$UMAP$partitions <- partitions
+
+plot_cells(cdsB, show_trajectory_graph = FALSE, color_cells_by = "seurat_clusters", label_groups_by_cluster = TRUE, label_leaves = TRUE, label_branch_points = TRUE)
+plot_cells(cdsB, show_trajectory_graph = FALSE, color_cells_by = "partition")
+
+
+cdsB <- learn_graph(cdsB, use_partition = FALSE)
+cdsB <- order_cells(cdsB) #Picking startpoint (possible to pick endpoint and reverse, har for 2 endpoints?)
+
+UMAPTrajectoryB <- plot_cells(cdsB, color_cells_by = "pseudotime")
+UMAPTrajectoryB
+rowData(cdsB)$gene_short_name <- rownames(cdsB)
+
+saveplots(UMAPTrajectoryB, "../BM Publication/", "UMAP Trajectory BM B")
+svg("UMAP Trajectory BM B.svg")
+UMAPTrajectoryB
+dev.off()
 ```
